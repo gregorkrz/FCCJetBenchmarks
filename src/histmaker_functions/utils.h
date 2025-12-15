@@ -1,5 +1,6 @@
 #include "ROOT/RLogger.hxx"
 #include <cmath>
+#include <algorithm>
 #include <math.h>
 #include <vector>
 #define rdfFatal R__LOG_FATAL(ROOT::Detail::RDF::RDFLogChannel())
@@ -82,17 +83,23 @@ int inspect_vecrp_object(Vec_rp object) {
   }
   return 0;
 }
-vector<float> min_with_default_value(vector<float> in) {
+
+
+vector<float> min(vector<float> in) {
   // Return a vector<float> of the minimum value in the input vector}
   vector<float> result;
   if (in.size() == 0) {
     result.push_back(-1);
-  } else {
-    result.push_back(min(in));
+    return result;
   }
+  float min_val = in[0];
+  for (auto &v : in) {
+    if (v < min_val)
+      min_val = v;
+  }
+  result.push_back(min_val);
   return result;
 }
-
 
 vector<float> filter_number_by_bin(vector<float> values, vector<float> binning, float lower_bound, float upper_bound) { // Return a vector<float> of the values that fall within the specified bin range
     std::vector<float> result;

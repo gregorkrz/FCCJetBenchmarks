@@ -14,13 +14,13 @@ def get_hist_jet_distances(df, RecoJetVariable, GenJetVariable):
     )
     df = df.Define(
         "min_distance_between_genjets",
-        "FCCAnalyses::Utils::min:with_default_value(FCCAnalyses::JetTools::get_jet_distances({}))".format(
+        "FCCAnalyses::Utils::min(FCCAnalyses::ZHfunctions::get_jet_distances({}))".format(
             format(GenJetVariable)
         ),
     )
     df = df.Define(
         "min_distance_between_recojets",
-        "FCCAnalyses::Utils::min:with_default_value(FCCAnalyses::ZHfunctions::get_jet_distances({}))".format(
+        "FCCAnalyses::Utils::min(FCCAnalyses::ZHfunctions::get_jet_distances({}))".format(
             RecoJetVariable
         ),
     )

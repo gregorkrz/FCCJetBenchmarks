@@ -169,7 +169,7 @@ Vec_rp get_particles_from_mc2rp(vector<int> mc_part_idx, vector<int> mc2rp,
         const float e = reco_particles[rp_idx].energy;
         const float m2 = e * e - (px * px + py * py + pz * pz);
         temp.mass = (m2 > 0.f) ? std::sqrt(m2) : 0.f;
-        if (abs(temp.mass - rp_data.mass) > 0.01) {
+        if (abs(temp.mass - rp_data.mass) > 0.01 && (abs(temp.mass) > 0.01)) {
           rdfWarning << "Inconsistent mass for particle: computed mass "
                      << temp.mass << " vs stored mass " << rp_data.mass << endl;
         }
@@ -301,9 +301,6 @@ vector<int> get_MC_quark_index_for_Higgs(Vec_mc mc,
     auto &p = mc[i];
     if ((p.PDG == 25) &&
         ((p.generatorStatus == 44) || (p.generatorStatus == 22))) {
-      if (debug) {
-        rdfVerbose << "Found Higgs at index " << i << endl;
-      }
       // Higgs - now find 1- or 2-hop 'daughters'
       // log
       vector<int> daughters =
@@ -312,10 +309,6 @@ vector<int> get_MC_quark_index_for_Higgs(Vec_mc mc,
       // quark_indices
       for (auto &d_idx : daughters) {
         auto &d = mc[d_idx];
-        if (debug) {
-          rdfVerbose << "  Daughter index: " << d_idx << " PDG " << d.PDG
-                     << endl;
-        }
         if (((abs(d.PDG) <= 5) || (d.PDG == 21)) &&
             d.generatorStatus ==
                 23) { // Quarks only (direct products of the hard interaction)
@@ -325,18 +318,8 @@ vector<int> get_MC_quark_index_for_Higgs(Vec_mc mc,
       // if quark_indices is empty, it might be H->WW->qqqq, so do another loop
       // through daughters to find W's and then their daughters
       if (quark_indices.size() == 0) {
-        if (debug) {
-          rdfVerbose << "Higgs at index " << i
-                     << " has no direct quark daughters, checking for W decays."
-                     << endl;
-        }
         for (auto &d_idx : daughters) {
           auto &d = mc[d_idx];
-          if (debug) {
-            rdfVerbose << "  Daughter PDG: " << d.PDG
-                       << ", status: " << d.generatorStatus << "idx" << d_idx
-                       << endl;
-          }
           vector<int> w_daughters =
               get_list_of_direct_particles_from_decay(d_idx, mc, ind);
           for (auto &wd_idx : w_daughters) {
@@ -348,10 +331,6 @@ vector<int> get_MC_quark_index_for_Higgs(Vec_mc mc,
             }
             // If it's a W-+ with status 51, do another hop
             if ((abs(wd.PDG) == 24) && (wd.generatorStatus == 51)) {
-              if (debug) {
-                rdfVerbose << "    Found W with status 51 at index " << wd_idx
-                           << ", checking its daughters." << endl;
-              }
               vector<int> ww_daughters =
                   get_list_of_direct_particles_from_decay(wd_idx, mc, ind);
               for (auto &wwd_idx :
@@ -427,21 +406,6 @@ vector<int> get_MC_quark_index_for_Higgs(Vec_mc mc,
   return quark_indices;
 }
 
-vector<float> min(vector<float> in) {
-  // Return a vector<float> of the minimum value in the input vector}
-  vector<float> result;
-  if (in.size() == 0) {
-    result.push_back(-1);
-    return result;
-  }
-  float min_val = in[0];
-  for (auto &v : in) {
-    if (v < min_val)
-      min_val = v;
-  }
-  result.push_back(min_val);
-  return result;
-}
 
 vector<float> get_jet_distances(Vec_rp jets) {
   // Get jet distances between each pair of jets (in deltaR)
@@ -868,9 +832,6 @@ std::vector<int> get_reco_truth_jet_mapping_greedy(Vec_rp reco_jets,
       result[p.i] = p.j;
       used[p.j] = 1;
     }
-  }
-  if (debug) {
-    exit(1);
   }
   return result;
 }

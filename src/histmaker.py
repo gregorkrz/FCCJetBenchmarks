@@ -36,19 +36,22 @@ parser.add_argument(
 )
 parser.add_argument(
     "--no-filter-fully-matched",
-    type=bool,
     action="store_true",
     default=False,
     help="By default, we only keep the events where all the jets are fully matched. If toggled, this filter will be turned off.",
 )
 parser.add_argument(
     "--ideal-matching",
-    type=bool,
     action="store_true",
     default=False,
     help="If toggled, the reco jets will be computed using the MC-reco links from the gen jets.",
 )
-
+parser.add_argument(
+    "--only-one-dataset",
+    type=str,
+    default="",
+    help="If set, it will only process one dataset.",
+)
 
 if "--" in sys.argv:
     argv_after_sep = sys.argv[sys.argv.index("--") + 1 :]
@@ -63,9 +66,12 @@ frac = 1
 processList = {}
 
 for folder in os.listdir(inputDir):
-    processList[folder] = {"fraction": frac}
-    if folder not in NUMBER_OF_HIGGS_JETS or folder not in NUMBER_OF_JETS:
-        raise Exception(f"Process {folder} not known")
+    procname = folder.replace(".root", "")
+    if args.only_one_dataset != "" and args.only_one_dataset != procname:
+        continue
+    processList[procname] = {"fraction": frac}
+    if procname not in NUMBER_OF_HIGGS_JETS or procname not in NUMBER_OF_JETS:
+        raise Exception(f"Process {procname} not known")
 
 bins_jetE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 bins_eta = [-5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 5]
@@ -73,7 +79,11 @@ bins_costheta = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]
 
 procDict = "FCCee_procDict_winter2023_IDEA.json"
 
-includePaths = ["src/histmaker_functions/jet_tools.h"]
+includePaths = [
+    "histmaker_functions/jet_tools.h",
+    "histmaker_functions/utils.h",
+    "histmaker_functions/functions.h",
+]
 
 outputDir = args.output
 
@@ -139,7 +149,7 @@ def build_graph(df, dataset):
     df = df.Define(
         "reco_gen_jet_matching",
         "FCCAnalyses::JetTools::greedy_matching({}, {}, {})".format(
-            RecoJetVariable, GenJetVariable, args.matching_radius
+            RecoJetVariable, GenJetVariable, args.jet_matching_radius
         ),
     )
     df, hist_jet_distances = get_hist_jet_distances(df, RecoJetVariable, GenJetVariable)
@@ -342,7 +352,7 @@ def build_graph(df, dataset):
         bins=bins_costheta,
         output_prefix="binned_E_reco_over_true_costheta",
     )
-    histograms += "histograms_E_binned_by_cos_Theta"
+    histograms += histograms_E_binned_by_cos_Theta
     h_jet_E_reco_over_E_true = df.Histo1D(
         (
             "h_jet_E_reco_over_E_true",
@@ -377,12 +387,12 @@ def build_graph(df, dataset):
         genjets_field=GenJetVariable,
         recojets_field=RecoJetVariable,
         expected_num_jets=NUMBER_OF_HIGGS_JETS[dataset],
-        matching_radius=args.matching_radius,
+        matching_radius=args.jet_matching_radius,
     )
     df = df.Define(
         "matching_reco_with_partons",
         "FCCAnalyses::JetTools::greedy_matching({}, {}, {})".format(
-            RecoJetVariable, "MC_part_asjets", args.matching_radius
+            RecoJetVariable, "MC_part_asjets", args.jet_matching_radius
         ),
     )
     df = df.Define(
@@ -472,6 +482,8 @@ def build_graph(df, dataset):
         h_mH_gen,
         h_mH_gen_all,
         h_mH_reco_all,
+        h_mH_all_stable_part,
+        hist_m_all_reco_particles,
     ]
     h_mH_stable_gt_particles = df.Histo1D(
         (
@@ -507,6 +519,7 @@ def build_graph(df, dataset):
         h_mH_stable_gt_particles,
         h_mH_reco_particles_matched,
         h_mH_MC_part,
+        h_ratio_matching_with_partons,
     ]
     # Define a constant that is the df length after filtering and also save that
-    return histograms, weightsum_after_filtering
+    return histograms, weightsum

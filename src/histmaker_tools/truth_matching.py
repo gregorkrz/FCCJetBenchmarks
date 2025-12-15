@@ -44,6 +44,7 @@ def get_Higgs_mass_with_truth_matching(
         "MC_part_asjets",
         "FCCAnalyses::ZHfunctions::select_rp(FCCAnalyses::ZHfunctions::vec_mc_to_rp(Particle), MC_part_idx)",
     )
+
     df = df.Define(
         "inv_mass_MC_part", "FCCAnalyses::ZHfunctions::invariant_mass(MC_part_asjets)"
     )
@@ -55,7 +56,7 @@ def get_Higgs_mass_with_truth_matching(
     )
     df = df.Define(
         "HardP_to_RecoJet_mapping",
-        "FCCAnalyses::ZHfunctions::merge_mappings(HardP_to_GenJet_mapping, fancy_matching)",
+        "FCCAnalyses::ZHfunctions::merge_mappings(HardP_to_GenJet_mapping, reco_gen_jet_matching)",
     )
     df = df.Define(
         "filtered_jets",
