@@ -11,6 +11,7 @@ from src.histmaker_tools.particle_filter import filter_MC_and_reco_particles
 from src.histmaker_tools.jet_level_statistics import get_hist_jet_distances
 from src.histmaker_tools.hit_level_statistics import get_calo_hit_statistics
 from src.histmaker_tools.binning import bin_quantity
+from src.histmaker_tools.jet_level_statistics import get_hist_jet_eta_and_energy
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--input", type=str, help="Input directory containing the dataset")
@@ -111,12 +112,11 @@ def neg_format(number):
 # build_graph function that contains the analysis logic, cuts and histograms (mandatory)
 def build_graph(df, dataset):
     print("############## Doing dataset:", dataset, "##############")
-    histograms = []
+    histograms = []  # output histogram root files
     df = df.Define(
         "MC_part_idx",
         "FCCAnalyses::ZHfunctions::get_MC_quark_index_for_Higgs(Particle, _Particle_daughters.index, false)",
     )
-
     # Sometimes, the W+W- are not decayed in the ZH -> 6 jet events. We filter out these events (<1%)
     df = df.Filter("MC_part_idx.size() == {}".format(NUMBER_OF_HIGGS_JETS[dataset]))
 
@@ -131,15 +131,11 @@ def build_graph(df, dataset):
 
     # Compute the jets from arguments
     df = compute_jets_from_args(df, args, NUMBER_OF_JETS[dataset])
+    df, histograms_jet_eta_E = get_hist_jet_eta_and_energy(
+        df, RecoJetVariable, GenJetVariable
+    )
+    histograms += histograms_jet_eta_E
 
-    df = df.Define(
-        "jet_energies",
-        "FCCAnalyses::JetTools::get_energy({})".format(RecoJetVariable),
-    )
-    df = df.Define(
-        "genjet_energies",
-        "FCCAnalyses::JetTools::get_energy({})".format(GenJetVariable),
-    )
     df = df.Define(
         "reco_gen_jet_matching",
         "FCCAnalyses::JetTools::greedy_matching({}, {}, {})".format(
@@ -289,7 +285,7 @@ def build_graph(df, dataset):
     )
     df = df.Define("num_matched_reco_jets", "genjet_energies_matched.size()")
     # Bin the jet_E_reco_over_E_true according to genjet_energies (bins [0, 50, 100, 150, 200])
-    histograms = [
+    histograms += [
         hist_genjet_all_energies,
         hist_genjet_matched_energies,
     ]
@@ -329,17 +325,6 @@ def build_graph(df, dataset):
         )
         histograms += hist_jetE_photon
 
-    df = df.Define(
-        "jet_etas", "FCCAnalyses::JetTools::get_jet_eta({})".format(RecoJetVariable)
-    )
-    df = df.Define(
-        "genjet_etas",
-        "FCCAnalyses::JetTools::get_jet_eta({})".format(GenJetVariable),
-    )
-    h_eta = df.Histo1D(("h_eta", "eta of reco jets;eta;Events", 100, -5, 5), "jet_etas")
-    h_eta_gen = df.Histo1D(
-        ("h_eta_gen", "eta of gen jets;eta;Events", 100, -5, 5), "genjet_etas"
-    )
     # For each energy and eta bin, count the number of unmatched reco jets over the number of gen jets in that bin,
     # and save these variables in the output file too
     df, histograms_E_binned_by_eta = bin_quantity(
@@ -374,14 +359,7 @@ def build_graph(df, dataset):
     # )
     histograms += [h_jet_E_reco_over_E_true]
     # Make a histogram of jet energies
-    h_E_jet = df.Histo1D(
-        ("h_E_all_reco_jets", "E of reco jet;E_reco;Events", 100, 0, 300),
-        "jet_energies",
-    )
-    h_E_genjet = df.Histo1D(
-        ("h_E_all_gen_jets", "E of gen jet;E_gen;Events", 100, 0, 300),
-        "genjet_energies",
-    )
+
     h_unmatched_reco_jets = df.Histo1D(
         (
             "h_unmatched_reco_jets",
@@ -392,7 +370,7 @@ def build_graph(df, dataset):
         ),
         "E_of_unmatched_reco_jets",
     )
-    histograms += [h_E_jet, h_E_genjet, h_unmatched_reco_jets]
+    histograms += [h_unmatched_reco_jets]
 
     df = get_Higgs_mass_with_truth_matching(
         df,
@@ -401,16 +379,11 @@ def build_graph(df, dataset):
         expected_num_jets=NUMBER_OF_HIGGS_JETS[dataset],
         matching_radius=args.matching_radius,
     )
-
     df = df.Define(
         "matching_reco_with_partons",
-        "FCCAnalyses::ZHfunctions::get_reco_truth_jet_mapping_greedy({}, {}, {}, false)".format(
+        "FCCAnalyses::JetTools::greedy_matching({}, {}, {})".format(
             RecoJetVariable, "MC_part_asjets", args.matching_radius
         ),
-    )
-    print(
-        "Matching reco with partons:",
-        df.AsNumpy(["matching_reco_with_partons"])["matching_reco_with_partons"][:5],
     )
     df = df.Define(
         "matching_proc_with_partons",
@@ -420,17 +393,11 @@ def build_graph(df, dataset):
     )
     df = df.Define(
         "ratio_jet_energies_matching_with_partons",
-        "std::get<0>(matching_proc_with_partons)",
+        "get<0>(matching_proc_with_partons)",
     )
     df = df.Define(
         "E_of_unmatched_reco_jets_with_partons",
-        "std::get<1>(matching_proc_with_partons)",
-    )
-    print(
-        "ratio_jet_energies_matching_with_partons:",
-        df.AsNumpy(["ratio_jet_energies_matching_with_partons"])[
-            "ratio_jet_energies_matching_with_partons"
-        ][:5],
+        "get<1>(matching_proc_with_partons)",
     )
     h_ratio_matching_with_partons = df.Histo1D(
         (
@@ -451,7 +418,7 @@ def build_graph(df, dataset):
         (
             "h_mH_all_stable_part",
             "Invariant mass of all particles; Minv; Events",
-            250,
+            1000,
             0,
             250,
         ),
@@ -466,46 +433,25 @@ def build_graph(df, dataset):
         (
             "hist_calo_hist_E",
             "Invariant mass of all reco particles; Minv; Events",
-            250,
+            1000,
             0,
             250,
         ),
         "inv_mass_all_reco_particles",
     )
-    # More mass histograms: for inv
     h_mH_reco = df.Histo1D(
-        ("h_mH_reco", "Higgs mass from reco jets;M_H (reco jets);Events", 500, 0, 250),
+        ("h_mH_reco", "Higgs mass from reco jets;M_H (reco jets);Events", 1000, 0, 250),
         "inv_mass_reco",
     )
     h_mH_gen = df.Histo1D(
-        ("h_mH_gen", "Higgs mass from gen jets;M_H (gen jets);Events", 500, 0, 250),
-        "inv_mass_gen",
-    )
-    h_mH_reco_core = df.Histo1D(
-        (
-            "h_mH_reco_core",
-            "Higgs mass from reco jets;M_H (reco jets);Events",
-            300,
-            75,
-            150,
-        ),
-        "inv_mass_reco",
-    )
-    h_mH_gen_core = df.Histo1D(
-        (
-            "h_mH_gen_core",
-            "Higgs mass from gen jets;M_H (gen jets);Events",
-            300,
-            75,
-            150,
-        ),
+        ("h_mH_gen", "Higgs mass from gen jets;M_H (gen jets);Events", 1000, 0, 250),
         "inv_mass_gen",
     )
     h_mH_gen_all = df.Histo1D(
         (
             "h_mH_gen_all",
             "Higgs mass from all gen jets;M_H (all gen jets);Events",
-            500,
+            1000,
             0,
             250,
         ),
@@ -515,30 +461,23 @@ def build_graph(df, dataset):
         (
             "h_mH_reco_all",
             "Higgs mass from all reco jets;M_H (all reco jets);Events",
-            500,
+            1000,
             0,
             250,
         ),
         "inv_mass_reco_all",
     )
-    results = results + [
+    histograms += [
         h_mH_reco,
         h_mH_gen,
         h_mH_gen_all,
         h_mH_reco_all,
-        h_mH_all_stable_part,
-        h_Ejet,
-        h_Egenjet,
-        hist_calo_hist_E,
-        h_mH_reco_core,
-        h_mH_gen_core,
     ]
-    #### More mass histograms: for inv_mass_stable_gt_particles_from_higgs, inv_mass_reco_particles_matched_from_higgs, inv_mass_MC_part
     h_mH_stable_gt_particles = df.Histo1D(
         (
             "h_mH_stable_gt_particles",
             "Higgs mass from stable gt particles;M_H (stable gt particles);Events",
-            500,
+            1000,
             0,
             250,
         ),
@@ -548,7 +487,7 @@ def build_graph(df, dataset):
         (
             "h_mH_reco_particles_matched",
             "Higgs mass from reco particles matched;M_H (reco particles matched);Events",
-            500,
+            1000,
             0,
             250,
         ),
@@ -558,22 +497,16 @@ def build_graph(df, dataset):
         (
             "h_mH_MC_part",
             "Higgs mass from initial MC part.;M_H (MC part);Events",
-            500,
+            1000,
             0,
             250,
         ),
         "inv_mass_MC_part",
     )
-    results = results + [
+    histograms += [
         h_mH_stable_gt_particles,
         h_mH_reco_particles_matched,
         h_mH_MC_part,
     ]
     # Define a constant that is the df length after filtering and also save that
-    return (
-        results
-        + histograms
-        + [h_eta, h_eta_gen, h_ratio_matching_with_partons, hist_m_all_reco_particles]
-        + outputs_before_filtering,
-        weightsum_after_filtering,
-    )
+    return histograms, weightsum_after_filtering

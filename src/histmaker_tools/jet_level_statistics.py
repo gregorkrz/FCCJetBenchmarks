@@ -81,3 +81,34 @@ def get_hist_jet_distances(df, RecoJetVariable, GenJetVariable):
         hist_min_dist_jets_reco,
     ]
     return df, histograms
+
+
+def get_hist_jet_eta_and_energy(df, RecoJetVariable, GenJetVariable):
+    df = df.Define(
+        "jet_etas", "FCCAnalyses::JetTools::get_jet_eta({})".format(RecoJetVariable)
+    )
+    df = df.Define(
+        "genjet_etas",
+        "FCCAnalyses::JetTools::get_jet_eta({})".format(GenJetVariable),
+    )
+    h_eta = df.Histo1D(("h_eta", "eta of reco jets;eta;Events", 100, -5, 5), "jet_etas")
+    h_eta_gen = df.Histo1D(
+        ("h_eta_gen", "eta of gen jets;eta;Events", 100, -5, 5), "genjet_etas"
+    )
+    df = df.Define(
+        "jet_energies",
+        "FCCAnalyses::JetTools::get_energy({})".format(RecoJetVariable),
+    )
+    df = df.Define(
+        "genjet_energies",
+        "FCCAnalyses::JetTools::get_energy({})".format(GenJetVariable),
+    )
+    h_E_jet = df.Histo1D(
+        ("h_E_all_reco_jets", "E of reco jet;E_reco;Events", 100, 0, 300),
+        "jet_energies",
+    )
+    h_E_genjet = df.Histo1D(
+        ("h_E_all_gen_jets", "E of gen jet;E_gen;Events", 100, 0, 300),
+        "genjet_energies",
+    )
+    return df, [h_eta, h_eta_gen, h_E_jet, h_E_genjet]
