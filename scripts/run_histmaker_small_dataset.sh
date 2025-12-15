@@ -8,6 +8,12 @@ fccanalysis run src/histmaker.py -- \
   --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/Tiny_IDEA_20251105/Durham \
   --jet-algorithm Durham
 
+# Durham, with ideal matching (for each GenJet, we match individually each MC particle to the corresponding reco particle)
+fccanalysis run src/histmaker.py -- \
+  --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/Tiny_IDEA_20251105/ \
+  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/Tiny_IDEA_20251105/Durham_IdealMatching \
+  --jet-algorithm Durham --ideal-matching
+
 # Calo jets
 
 fccanalysis run src/histmaker.py -- \
@@ -21,5 +27,4 @@ fccanalysis run src/histmaker.py -- \
   --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/Tiny_IDEA_20251105/ \
   --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/Tiny_IDEA_20251105/ee_AK8 \
   --jet-algorithm EEAK --AK-radius 0.8
-
 
