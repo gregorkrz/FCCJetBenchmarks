@@ -1,6 +1,6 @@
 import os
 
-RUN_SLURM_SCRIPTS = True
+RUN_SLURM_SCRIPTS = False
 ONLY_RUN_UNFINISHED_JOBS = True
 # If, it will check for jobs that don't have any output root files
 # (i.e., cancelled due to preemption) and re-run them again...
@@ -89,7 +89,7 @@ for command_name in commands:
         )
         output_filename = f"/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20251114/{output_folder_name[command_name]}/{process}.root"
         if ONLY_RUN_UNFINISHED_JOBS and os.path.exists(output_filename):
-            print("Output file", output_filename, "exists, skipping job", job_name)
+            # print("Output file", output_filename, "exists, skipping job", job_name)
             continue
         filename = "jobs/" + job_name + ".slurm"
         with open(filename, "w") as f:

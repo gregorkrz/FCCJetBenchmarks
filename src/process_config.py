@@ -6,14 +6,12 @@ NUMBER_OF_JETS = {
     "p8_ee_ZH_6jet_ecm240": 6,
     "p8_ee_ZH_6jet_HF_ecm240": 6,
     "p8_ee_ZH_6jet_LF_ecm240": 6,
-
     # 4 jets (violet-magenta hues)
     "p8_ee_ZH_bbbb_ecm240": 4,
     "p8_ee_ZH_qqbb_ecm240": 4,
     "p8_ee_ZH_bbgg_ecm240": 4,
     "p8_ee_ZH_qqgg_ecm240": 4,
     "p8_ee_ZH_qqqq_ecm240": 4,
-
     # 2 jets (teal-green hues)
     "p8_ee_ZH_vvbb_ecm240": 2,
     "p8_ee_ZH_vvgg_ecm240": 2,
@@ -50,20 +48,17 @@ PROCESS_TO_ROW_COL = {
 }
 
 HUMAN_READABLE_PROCESS_NAMES = {
-    "p8_ee_ZH_6jet_ecm240": "Z(→qq)H(→WW→qqqq)",
-    "p8_ee_ZH_6jet_HF_ecm240": "Z(→bb)H(→WW→blbl)",
-    "p8_ee_ZH_6jet_LF_ecm240": "Z(→ll)H(→WW→llll)",
-
+    "p8_ee_ZH_6jet_ecm240": "Z(→qq)H(→WW→qqqq) (all f.)",
+    "p8_ee_ZH_6jet_HF_ecm240": "Z(→bb)H(→WW→bqbq)",
+    "p8_ee_ZH_6jet_LF_ecm240": "Z(→qq)H(→WW→qqqq)",
     "p8_ee_ZH_bbbb_ecm240": "Z(→bb)H(→bb)",
-    "p8_ee_ZH_qqbb_ecm240": "Z(→ll)H(→bb)",
+    "p8_ee_ZH_qqbb_ecm240": "Z(→qq)H(→bb)",
     "p8_ee_ZH_bbgg_ecm240": "Z(→bb)H(→gg)",
-    "p8_ee_ZH_qqgg_ecm240": "Z(→ll)H(→gg)",
-    "p8_ee_ZH_qqqq_ecm240": "Z(→ll)H(→ll)",
-
+    "p8_ee_ZH_qqgg_ecm240": "Z(→qq)H(→gg)",
+    "p8_ee_ZH_qqqq_ecm240": "Z(→qq)H(→qq)",
     "p8_ee_ZH_vvbb_ecm240": "Z(→νν)H(→bb)",
     "p8_ee_ZH_vvgg_ecm240": "Z(→νν)H(→gg)",
-    "p8_ee_ZH_vvqq_ecm240": "Z(→νν)H(→ll)",
-
+    "p8_ee_ZH_vvqq_ecm240": "Z(→νν)H(→qq)",
     ## For the ee-AK comparison
     "Calo Durham": "Calo Durham",
     "PF Durham": "PF Durham",
@@ -80,17 +75,14 @@ LINE_STYLES = {
     "p8_ee_ZH_6jet_ecm240": "--",
     "p8_ee_ZH_6jet_HF_ecm240": "-",
     "p8_ee_ZH_6jet_LF_ecm240": ":",
-
     "p8_ee_ZH_bbbb_ecm240": "-",
     "p8_ee_ZH_qqbb_ecm240": "--",
     "p8_ee_ZH_bbgg_ecm240": "--",
     "p8_ee_ZH_qqgg_ecm240": "--",
     "p8_ee_ZH_qqqq_ecm240": ":",
-
     "p8_ee_ZH_vvbb_ecm240": "-",
     "p8_ee_ZH_vvgg_ecm240": "--",
     "p8_ee_ZH_vvqq_ecm240": ":",
-
     "Calo Durham": ":",
     "PF Durham": "-",
     "AK4": "--",
@@ -105,19 +97,16 @@ PROCESS_COLORS = {
     "p8_ee_ZH_6jet_ecm240": "#0067A5",
     "p8_ee_ZH_6jet_HF_ecm240": "#0082C8",
     "p8_ee_ZH_6jet_LF_ecm240": "#339EDD",
-
     # 4 jets (violet-magenta hues)
     "p8_ee_ZH_bbbb_ecm240": "#B832A0",
     "p8_ee_ZH_qqbb_ecm240": "#7A3CBF",
     "p8_ee_ZH_bbgg_ecm240": "#D45ECF",
     "p8_ee_ZH_qqgg_ecm240": "#D890E0",
     "p8_ee_ZH_qqqq_ecm240": "#E3B1F0",
-
     # 2 jets (teal-green hues)
     "p8_ee_ZH_vvbb_ecm240": "#1B9E77",
     "p8_ee_ZH_vvgg_ecm240": "#33AF8A",
     "p8_ee_ZH_vvqq_ecm240": "#7CCBA2",
-
     # For the comparison of jet algorithms
     "Calo Durham": "#1f77b4",
     "PF Durham": "#1fa39c",
@@ -127,4 +116,3 @@ PROCESS_COLORS = {
     "AK10": "#6e3ebf",
     "AK12": "#542ba2",
 }
-
