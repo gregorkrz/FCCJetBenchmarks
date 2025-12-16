@@ -47,7 +47,7 @@ parser.add_argument(
     help="If toggled, the reco jets will be computed using the MC-reco links from the gen jets.",
 )
 parser.add_argument(
-    "--only-one-dataset",
+    "--only-dataset",
     type=str,
     default="",
     help="If set, it will only process one dataset.",
@@ -67,12 +67,12 @@ processList = {}
 
 for folder in os.listdir(inputDir):
     procname = folder.replace(".root", "")
-    if args.only_one_dataset != "" and args.only_one_dataset != procname:
+    if args.only_dataset != "" and args.only_dataset != procname:
         continue
     processList[procname] = {"fraction": frac}
     if procname not in NUMBER_OF_HIGGS_JETS or procname not in NUMBER_OF_JETS:
         raise Exception(f"Process {procname} not known")
-
+print("ProcList:", processList)
 bins_jetE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 bins_eta = [-5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 5]
 bins_costheta = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]
@@ -86,9 +86,7 @@ includePaths = [
 ]
 
 outputDir = args.output
-
-if not os.path.exists(outputDir):
-    os.makedirs(outputDir)
+os.makedirs(outputDir, exist_ok=True)
 
 Fully_Matched_Only = not args.no_filter_fully_matched
 

@@ -169,7 +169,7 @@ Vec_rp get_particles_from_mc2rp(vector<int> mc_part_idx, vector<int> mc2rp,
         const float e = reco_particles[rp_idx].energy;
         const float m2 = e * e - (px * px + py * py + pz * pz);
         temp.mass = (m2 > 0.f) ? std::sqrt(m2) : 0.f;
-        if (abs(temp.mass - rp_data.mass) > 0.01 && (abs(temp.mass) > 0.01)) {
+        if (abs(temp.mass - rp_data.mass) > 0.01 && (abs(temp.mass) > 0.03)) {
           rdfWarning << "Inconsistent mass for particle: computed mass "
                      << temp.mass << " vs stored mass " << rp_data.mass << endl;
         }
