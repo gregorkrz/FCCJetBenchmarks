@@ -400,13 +400,15 @@ for j in range(len(ax_mH_twojets)):
 fig.tight_layout()
 annotate_matrix_plot_with_arrows(fig)
 fig.tight_layout()
-fig_path = os.path.join(inputDir, f"JER_comparison_PF_and_ideal_matching.pdf")
+fig_path = os.path.join(outputDir, f"JER_comparison_PF_and_ideal_matching.pdf")
 
 fig_mH.tight_layout()
-fig_mH_path = os.path.join(inputDir, f"Higgs_mass_comparison_PF_and_ideal_matching.pdf")
+fig_mH_path = os.path.join(
+    outputDir, f"Higgs_mass_comparison_PF_and_ideal_matching.pdf"
+)
 fig_mH_twojets.tight_layout()
 fig_mH_twojets_path = os.path.join(
-    inputDir, f"Higgs_mass_comparison_PF_and_ideal_matching_2jets.pdf"
+    outputDir, f"Higgs_mass_comparison_PF_and_ideal_matching_2jets.pdf"
 )
 
 print("Saving figure to", fig_mH_path)
@@ -471,9 +473,9 @@ for prefix in ["_all"]:
             if process in process_for_detailed_bins_plots:
                 # Make detailed binning plots for these processes
                 if method == "CaloJets_Durham":
-                    binning_metadata = f[process]["std68"]
+                    binning_metadata = f[process]["std68_all"]
                 else:
-                    binning_metadata = f[process]["std68_" + prefix]
+                    binning_metadata = f[process]["std68" + prefix]
                 hist_names = binning_metadata[7]
                 if process not in figs_processes:
                     n_bins = len(binning_metadata[6])
@@ -552,7 +554,7 @@ for prefix in ["_all"]:
                         axs_processes[process][b, col].grid(True)
             linestyle = "--"
             if method == "CaloJets_Durham":
-                cp = f[process]["std68"]
+                cp = f[process]["std68_all"]
             else:
                 cp = f[process]["std68" + prefix]
             xs, ys = cp[2], cp[3]
@@ -652,7 +654,7 @@ for prefix in ["_all"]:
     for process in figs_processes:
         figs_processes[process].tight_layout()
         fig_process_path = os.path.join(
-            inputDir, f"Detailed_JER_histograms_{process}{prefix}.pdf"
+            outputDir, f"Detailed_JER_histograms_{process}{prefix}.pdf"
         )
         print("Saving figure to", fig_process_path)
         figs_processes[process].savefig(fig_process_path)
@@ -678,29 +680,29 @@ for ax in [ax_fit_trials, ax_fit_trials_calojets]:
 
 fig.tight_layout()
 annotate_matrix_plot_with_arrows(fig)
-fig_path = os.path.join(inputDir, f"JER_comparison_PF_and_CaloJets.pdf")
+fig_path = os.path.join(outputDir, f"JER_comparison_PF_and_CaloJets.pdf")
 
 print("Saving figure to", fig_path)
 fig.savefig(fig_path)
 fig_mH.tight_layout()
-fig_mH_path = os.path.join(inputDir, f"Higgs_mass_comparison_PF_and_CaloJets.pdf")
+fig_mH_path = os.path.join(outputDir, f"Higgs_mass_comparison_PF_and_CaloJets.pdf")
 print("Saving figure to", fig_mH_path)
 
 fig_mH.savefig(fig_mH_path)
 fig_E_mH_gluons.tight_layout()
 fig_E_mH_gluons_path = os.path.join(
-    inputDir, f"Higgs_mass_and_E_resolution_gluon_processes.pdf"
+    outputDir, f"Higgs_mass_and_E_resolution_gluon_processes.pdf"
 )
 print("Saving figure to", fig_E_mH_gluons_path)
 fig_E_mH_gluons.savefig(fig_E_mH_gluons_path)
 
 fig_fit_trials_calojets.tight_layout()
-path_cj = os.path.join(inputDir, f"JER_fitting_CaloJets.pdf")
+path_cj = os.path.join(outputDir, f"JER_fitting_CaloJets.pdf")
 fig_fit_trials_calojets.savefig(path_cj)
 
 # Similar for fig_fit_trials
 fig_fit_trials.tight_layout()
-path_pf = os.path.join(inputDir, f"JER_fitting_PFJets.pdf")
+path_pf = os.path.join(outputDir, f"JER_fitting_PFJets.pdf")
 fig_fit_trials.savefig(path_pf)
 
 for prefix in ["neutral", "charged", "photons"]:
@@ -751,7 +753,7 @@ for prefix in ["neutral", "charged", "photons"]:
             label = HUMAN_READABLE_PROCESS_NAMES[process]
             linestyle = "--"
             if method == "CaloJets_Durham":
-                cp = f[process]["std68"]
+                cp = f[process]["std68_all"]
             else:
                 cp = f[process]["std68_" + prefix]
             # xs, ys = cp[2], cp[3]
@@ -783,6 +785,6 @@ for prefix in ["neutral", "charged", "photons"]:
             ax[i, j].grid()
     fig.tight_layout()
     annotate_matrix_plot_with_arrows(fig)
-    fig_path = os.path.join(inputDir, f"JER_comparison_{prefix}_PF_vs_CaloJets.pdf")
+    fig_path = os.path.join(outputDir, f"JER_comparison_{prefix}_PF_vs_CaloJets.pdf")
     print("Saving figure to", fig_path)
     fig.savefig(fig_path)
