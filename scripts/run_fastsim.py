@@ -1,0 +1,124 @@
+import argparse
+
+"""
+
+Producing samples:
+python scripts/run_fastsim.py --run --output-folder PATH_TO_DATASET/output --n-jobs 100 --starting-job 0
+
+Each job is 50k events. This script produces 100 jobs for each process, and with 11 processes, this makes 1100 jobs
+in total. If your slurm system has a limit on the number of jobs you can submit, consider submitting
+less jobs at a time (need to specify a smaller --n-jobs and adjust --starting-job for each batch of submissions).
+
+The commands will produce the samples in PATH_TO_DATASET/output0, PATH_TO_DATASET/output1... folders.
+
+"""
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--run", action="store_true", help="Run the job after generating it"
+)
+parser.add_argument("--output-folder", type=str, default="fast_sim/outputs")
+parser.add_argument(
+    "--n-jobs",
+    type=int,
+    default=1,
+    help="Number of jobs to generate (the number will be appended to the folder for each job)",
+)
+parser.add_argument(
+    "--starting-job",
+    type=int,
+    default=1,
+    help="Starting job number (useful for continuing from a previous run)",
+)
+args = parser.parse_args()
+
+
+template = """#!/bin/bash
+#SBATCH --partition=milano               # Specify the partition
+#SBATCH --account=atlas                  # Specify the account
+#SBATCH --mem={mem}                      # Request 60GB of memory and 1 CPU
+#SBATCH --cpus-per-task=2                # Request 4 CPU cores
+#SBATCH --nodes=1                        # Request 1 node
+#SBATCH --time=05:00:00                  # Set the time limit to 1 hour
+#SBATCH --job-name={jobname}             # Name the job
+#SBATCH --output=/fs/ddn/sdf/group/atlas/d/gregork/fastsim/log/{jobname}_%j_%x.log           # Redirect stdout to a log file
+#SBATCH --error=/fs/ddn/sdf/group/atlas/d/gregork/fastsim/err/{jobname}_%j_%x.err            # Redirect stderr to a log file
+
+# Load the Singularity environment
+export APPTAINER_CACHEDIR=/sdf/scratch/atlas/gregork/apptainer_cache
+export APPTAINER_TMPDIR=/sdf/scratch/atlas/gregork/apptainer_tmp
+
+{script}
+
+"""
+
+detector_cards = {
+    2: "delphes_cards/detector/card_IDEA_N2.tcl",
+    4: "delphes_cards/detector/card_IDEA_N4.tcl",
+    6: "delphes_cards/detector/card_IDEA_N6.tcl",
+}
+
+
+# Commands for generating each physics process
+cmds = {
+    "6jet": "DelphesPythia8_EDM4HEP {detector_card} delphes_cards/edm4hep_IDEA.tcl delphes_cards/process/p8_ee_ZH_6jet_ecm240.cmd {out_folder}/p8_ee_ZH_6jet_ecm240.root",
+    "2jet_ZH": "DelphesPythia8_EDM4HEP {detector_card} delphes_cards/edm4hep_IDEA.tcl delphes_cards/process/p8_ee_ZH_vvbb_ecm240.cmd {out_folder}/p8_ee_ZH_vvbb_ecm240.root",
+    "ZH_bbbb": "DelphesPythia8_EDM4HEP {detector_card} delphes_cards/edm4hep_IDEA.tcl delphes_cards/process/p8_ee_ZH_bbbb_ecm240.cmd {out_folder}/p8_ee_ZH_bbbb_ecm240.root",
+    "ZH_nunugg": "DelphesPythia8_EDM4HEP {detector_card} delphes_cards/edm4hep_IDEA.tcl delphes_cards/process/p8_ee_ZH_vvgg_ecm240.cmd {out_folder}/p8_ee_ZH_vvgg_ecm240.root",
+    "ZH_qqbb": "DelphesPythia8_EDM4HEP {detector_card} delphes_cards/edm4hep_IDEA.tcl delphes_cards/process/p8_ee_ZH_qqbb_ecm240.cmd {out_folder}/p8_ee_ZH_qqbb_ecm240.root",
+    "2jet_ZH_nunuqq": "DelphesPythia8_EDM4HEP {detector_card}  delphes_cards/edm4hep_IDEA.tcl delphes_cards/process/p8_ee_ZH_vvqq_ecm240.cmd {out_folder}/p8_ee_ZH_vvqq_ecm240.root",
+    "ZH_qqgg": "DelphesPythia8_EDM4HEP {detector_card} delphes_cards/edm4hep_IDEA.tcl delphes_cards/process/p8_ee_ZH_qqgg_ecm240.cmd {out_folder}/p8_ee_ZH_qqgg_ecm240.root",
+    "ZH_bbgg": "DelphesPythia8_EDM4HEP {detector_card} delphes_cards/edm4hep_IDEA.tcl delphes_cards/process/p8_ee_ZH_bbgg_ecm240.cmd {out_folder}/p8_ee_ZH_bbgg_ecm240.root",
+    "ZH_6jet_HF": "DelphesPythia8_EDM4HEP {detector_card} delphes_cards/edm4hep_IDEA.tcl delphes_cards/process/p8_ee_ZH_6jet_HF_ecm240.cmd {out_folder}/p8_ee_ZH_6jet_HF_ecm240.root",
+    "ZH_6jet_LF": "DelphesPythia8_EDM4HEP {detector_card} delphes_cards/edm4hep_IDEA.tcl delphes_cards/process/p8_ee_ZH_6jet_LF_ecm240.cmd {out_folder}/p8_ee_ZH_6jet_LF_ecm240.root",
+    "ZH_qqqq": "DelphesPythia8_EDM4HEP {detector_card} delphes_cards/edm4hep_IDEA.tcl delphes_cards/process/p8_ee_ZH_qqqq_ecm240.cmd {out_folder}/p8_ee_ZH_qqqq_ecm240.root",
+}
+
+Njets = {
+    "6jet": 6,
+    "2jet_ZH": 2,
+    "ZH_bbbb": 4,
+    "ZH_nunugg": 2,
+    "ZH_qqbb": 4,
+    "2jet_ZH_nunuqq": 2,
+    "ZH_qqgg": 4,
+    "ZH_bbgg": 4,
+    "ZH_6jet_HF": 6,
+    "ZH_6jet_LF": 6,
+    "ZH_qqqq": 4,
+}
+
+
+def cmd_gen(cmd):
+    return f"singularity exec -B /sdf -B /cvmfs -B /fs --nv docker://gkrz/alma:v0 /bin/bash -lc 'source /cvmfs/fcc.cern.ch/sw/latest/setup.sh && {cmd}'"
+
+
+import os
+
+os.makedirs(f"{args.output_folder}", exist_ok=True)
+
+for i in range(args.starting_job, args.starting_job + args.n_jobs + 1):
+    for cmd in cmds:
+        # Make the folder if it doesn't exist
+        out_folder = f"{args.output_folder}{i}"
+        os.makedirs(out_folder, exist_ok=True)
+        n_jets = Njets[cmd]
+        t = template.format(
+            script=cmd_gen(
+                cmds[cmd].format(
+                    detector_card=detector_cards[n_jets], out_folder=out_folder
+                )
+            ),
+            jobname=cmd + "_50k_" + str(i),
+            mem="5G",
+        )
+        filename = f"jobs/{cmd}_50k_{i}.sh"
+        with open(filename, "w") as f:
+            f.write(t)
+        print(f"Generated {filename}")
+        if args.run:
+            import os
+
+            os.system(f"sbatch {filename}")
+            print(f"Submitted {filename} to slurm")
