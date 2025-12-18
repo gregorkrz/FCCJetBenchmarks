@@ -1,6 +1,6 @@
 import os
 
-RUN_SLURM_SCRIPTS = False
+RUN_SLURM_SCRIPTS = True
 ONLY_RUN_UNFINISHED_JOBS = True
 # If, it will check for jobs that don't have any output root files
 # (i.e., cancelled due to preemption) and re-run them again...
@@ -26,10 +26,10 @@ export APPTAINER_TMPDIR=/sdf/scratch/atlas/gregork/apptainer_tmp
 singularity exec -B /sdf -B /cvmfs -B /fs --nv docker://gkrz/alma:v0 {command_to_run}
 """
 
-command = ". /cvmfs/fcc.cern.ch/sw/latest/setup.sh  && fccanalysis run --n-threads 1 src/histmaker.py -- \
+command = ".  /cvmfs/sw.hsf.org/key4hep/setup.sh -r 2025-05-29 && fccanalysis run --n-threads 1 src/histmaker.py -- \
   --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20251114 \
-  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20251114/{output_folder_name} \
-  --jet-algorithm {jet_algo} "
+  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20251114_MatchingR03/{output_folder_name} \
+  --jet-algorithm {jet_algo} --jet-matching-radius 0.3 "
 
 process_list = [
     "p8_ee_ZH_6jet_ecm240",
@@ -98,7 +98,7 @@ for command_name in commands:
             error_logs=stderr,
             command_to_run=f"/bin/sh -c '{cmd}'",
         )
-        output_filename = f"/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20251114/{output_folder_name[command_name]}/{process}.root"
+        output_filename = f"/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20251114_MatchingR03/{output_folder_name[command_name]}/{process}.root"
         if ONLY_RUN_UNFINISHED_JOBS and os.path.exists(output_filename):
             # print("Output file", output_filename, "exists, skipping job", job_name)
             continue

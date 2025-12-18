@@ -122,6 +122,7 @@ def get_result_for_process(
         sums = []
         am = np.argmax(theHist)
         MPV = 0.5 * (bin_edges[am] + bin_edges[am + 1])
+
         # Fill list of bin centers and the integral up to those point
         for i in range(len(bin_edges) - 1):
             weight += theHist[i] * (bin_edges[i + 1] - bin_edges[i])

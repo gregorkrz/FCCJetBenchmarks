@@ -116,14 +116,16 @@ python scripts/organize_dataset_per_process.py --base PATH_TO_DATASET
 ### Adding your own processes
 
 To add a new process, `src/process_config.py` needs to be updated with the new process name, number of jets, as well as
-a label, color and linestyle for plotting.
+a label, color and line style for plotting.
 
 
 ## Main results
 
 
-## Work in progress
+## Issues / Work in progress
 
+* The energy resolution determination (narrowest 68% interval) is somewhat slow as it's written in Python.
+* Messy plotting code needs to be cleaned up.
 
 ## References
 
