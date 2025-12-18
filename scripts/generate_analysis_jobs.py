@@ -1,6 +1,6 @@
 import os
 
-RUN_SLURM_SCRIPTS = True
+RUN_SLURM_SCRIPTS = False
 ONLY_RUN_UNFINISHED_JOBS = True
 # If, it will check for jobs that don't have any output root files
 # (i.e., cancelled due to preemption) and re-run them again...
@@ -71,7 +71,7 @@ for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
         output_folder_name=f"PF_AntiKtR{radius_str}",
         jet_algo=f"EEAK",
     ) + " --AK-radius {}".format(radius)
-    output_folder_name[command_name] = f"PF_eeAK{radius_str}"
+    output_folder_name[command_name] = f"PF_AntiKtR{radius_str}"
 
 error_logs_prefix = "/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/logs/"
 
@@ -85,7 +85,7 @@ for command_name in commands:
         stderr = error_logs_prefix + command_name + "_" + process + ".stderr"
         n_cpus = 10
         memory = 80000
-        time = "03:00:00"
+        time = "04:00:00"
         job_name = "{}_{}".format(command_name, process)
         cmd = commands[command_name] + " --only-dataset " + process
         # Now, save the slurm file into jobs/job_name.slurm

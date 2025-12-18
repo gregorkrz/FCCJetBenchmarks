@@ -30,15 +30,16 @@ def annotate_matrix_plot_with_arrows(fig):
     ax.set_axis_off()
     ax.annotate(
         "",
-        xy=(0.02, 0.01),
+        xy=(0.009, 0.60),
         xycoords="figure fraction",
-        xytext=(0.02, 0.99),
+        xytext=(0.009, 0.99),
         textcoords="figure fraction",
         arrowprops=dict(arrowstyle="->", lw=1.2),
+        color="gray",
     )
     ax.text(
-        0.01,
-        0.5,
+        0.0048,
+        0.75,
         "More B-hadron content",
         transform=ax.transAxes,
         rotation=90,
@@ -48,16 +49,17 @@ def annotate_matrix_plot_with_arrows(fig):
     )
     ax.annotate(
         "",
-        xy=(0.99, 0.99),
+        xy=(0.40, 0.99),
         xycoords="figure fraction",
         xytext=(0.01, 0.99),
         textcoords="figure fraction",
         arrowprops=dict(arrowstyle="->", lw=1.2),
+        color="gray",
     )
     ax.text(
-        0.5,
-        0.985,
-        "Higher number of final state jets",
+        0.25,
+        0.995,
+        "Higher number of final-state jets",
         transform=ax.transAxes,
         ha="center",
         va="center",
@@ -127,12 +129,20 @@ gluon_comparison_processes = {  # process idx to plot idx - group together by n 
 # Resolution plots, PF vs PF + Ideal matching
 
 fig, ax = plt.subplots(5, 3, figsize=(10, 11))
-fig_mH, ax_mH = plt.subplots(2, 2, figsize=(9, 9))
+fig_mH, ax_mH = plt.subplots(2, 3, figsize=(9, 7))
 fig_mH_twojets, ax_mH_twojets = plt.subplots(4, 2, figsize=(9, 9))
 fig_E_mH_gluons, ax_E_mH_gluons = plt.subplots(2, 3, figsize=(12, 8))
 
 
-def get_func_fit(mid_points, Rs, confusion_term=True, min_E=0.0):
+def get_func_fit(
+    mid_points,
+    Rs,
+    confusion_term=True,
+    min_E=0.0,
+    bounds_constant=[0, np.inf],
+    bounds_confusion=[0, np.inf],
+    bounds_noise=[0, np.inf],
+):
     # basically filter out points with mid_points < min_E
     mask = np.array(mid_points) >= min_E
     mid_points = np.array(mid_points)[mask]
@@ -142,8 +152,17 @@ def get_func_fit(mid_points, Rs, confusion_term=True, min_E=0.0):
         def resolution_func(E, a, b, c):
             return np.sqrt((a / np.sqrt(E)) ** 2 + b**2 + (c / E) ** 2)
 
+        bounds = (
+            [bounds_noise[0], bounds_constant[0], bounds_confusion[0]],
+            [bounds_noise[1], bounds_constant[1], bounds_confusion[1]],
+        )
         popt, pcov = curve_fit(
-            resolution_func, mid_points, Rs, p0=[0.5, 0.03, 0.1], maxfev=10000
+            resolution_func,
+            mid_points,
+            Rs,
+            p0=[0.5, 0.03, 0.1],
+            maxfev=10000,
+            bounds=bounds,
         )
         # return a smooth function throughout mid_points
     else:
@@ -151,8 +170,12 @@ def get_func_fit(mid_points, Rs, confusion_term=True, min_E=0.0):
         def resolution_func(E, a, b):
             return np.sqrt((a / np.sqrt(E)) ** 2 + b**2)
 
+        bounds = (
+            [bounds_noise[0], bounds_constant[0]],
+            [bounds_noise[1], bounds_constant[1]],
+        )
         popt, pcov = curve_fit(
-            resolution_func, mid_points, Rs, p0=[0.5, 0.03], maxfev=10000
+            resolution_func, mid_points, Rs, p0=[0.5, 0.03], maxfev=10000, bounds=bounds
         )
         # return a smooth function throughout mid_points
     xs = np.linspace(min(mid_points), max(mid_points), 100)
@@ -256,44 +279,28 @@ for method in ["PF_Durham", "PF_Durham_IdealMatching"]:
             ax_E_mH_gluons[plot_idx, 0].set_xlabel("$E_{true}$ [GeV]")
             # Also plot the energy resolution histogram on (plot_idx, 0)
         if LINE_STYLES[process] == ":":
-            ax_mH[0, 0].hist(
-                Higgs_x,
-                bins=Higgs_edges,
-                weights=Higgs_y,
-                histtype="step",
-                label=f"{label} ({method_dict[method]})",
-                color=PROCESS_COLORS[process],
-                linestyle=method_linestyle[method],
-            )
-            ax_mH[0, 1].hist(
-                Higgs_x,
-                bins=Higgs_edges,
-                weights=Higgs_y,
-                histtype="step",
-                label=f"{label} ({method_dict[method]})",
-                color=PROCESS_COLORS[process],
-                linestyle=method_linestyle[method],
-            )
+            for a in ax_mH[0]:
+                a.hist(
+                    Higgs_x,
+                    bins=Higgs_edges,
+                    weights=Higgs_y,
+                    histtype="step",
+                    label=f"{label} ({method_dict[method]})",
+                    color=PROCESS_COLORS[process],
+                    linestyle=method_linestyle[method],
+                )
             ax_mH[0, 0].set_title(r"H → Light jets")
         elif LINE_STYLES[process] == "-":
-            ax_mH[1, 0].hist(
-                Higgs_x,
-                bins=Higgs_edges,
-                weights=Higgs_y,
-                histtype="step",
-                label=f"{label} ({method_dict[method]})",
-                color=PROCESS_COLORS[process],
-                linestyle=method_linestyle[method],
-            )
-            ax_mH[1, 1].hist(
-                Higgs_x,
-                bins=Higgs_edges,
-                weights=Higgs_y,
-                histtype="step",
-                label=f"{label} ({method_dict[method]})",
-                color=PROCESS_COLORS[process],
-                linestyle=method_linestyle[method],
-            )
+            for a in ax_mH[1]:
+                a.hist(
+                    Higgs_x,
+                    bins=Higgs_edges,
+                    weights=Higgs_y,
+                    histtype="step",
+                    label=f"{label} ({method_dict[method]})",
+                    color=PROCESS_COLORS[process],
+                    linestyle=method_linestyle[method],
+                )
             ax_mH[1, 0].set_title(r"H → Light and b-jets")
         if NUMBER_OF_JETS.get(process) == 2 and method == "PF_Durham":
             ax_mH_twojets[0, 0].hist(
@@ -386,6 +393,8 @@ for i in range(len(ax_mH)):
         ax_mH[i, j].set_xlabel("$m_H$ (reco.) [GeV]")
         ax_mH[i, j].set_xlabel("$m_H$ (reco.) [GeV]")
         ax_mH[i, j].grid()
+    ax_mH[i, 2].set_xlim(60, 180)
+    ax_mH[i, 2].set_yscale("log")
     ax_mH[i, 1].set_xlim(100, 140)
     ax_mH[i, 0].legend(title="q ∈ {u, d, s}", fontsize=7.5, title_fontsize=8)
 for j in range(len(ax_mH_twojets)):
@@ -580,17 +589,22 @@ for prefix in ["_all"]:
                 )  # + rf"({print_noise_model(fit_params)})")
                 if "CaloJet" in method:
                     ax_fits = ax_fit_trials_calojets
-                else:
+                elif "IdealMatching" not in method:
                     ax_fits = ax_fit_trials
+                else:
+                    # skip
+                    continue
 
-                ax_fits[row, col].plot(x_pts, y_pts, "x", markersize=4, label=label)
+                ax_fits[row, col].plot(
+                    x_pts, y_pts, "x", markersize=4, label=method_dict[method]
+                )
                 xs, ys, fit_params, fit_cov = get_func_fit(
                     x_pts, y_pts, confusion_term=True
                 )
                 ax_fits[row, col].plot(
                     xs,
                     ys,
-                    label=f"{method_dict[method]} {print_params(fit_params)}",
+                    label=f"{print_params(fit_params)}",
                     linestyle="--",
                 )
                 xs, ys, fit_params, fit_cov = get_func_fit(
@@ -599,17 +613,22 @@ for prefix in ["_all"]:
                 ax_fits[row, col].plot(
                     xs,
                     ys,
-                    label=f"{method_dict[method]} {print_params(fit_params)}",
+                    label=f"{print_params(fit_params)}",
                     linestyle="--",
                 )
-
                 xs, ys, fit_params, fit_cov = get_func_fit(
-                    x_pts, y_pts, confusion_term=False, min_E=40.0
+                    x_pts,
+                    y_pts,
+                    confusion_term=True,
+                    bounds_constant=[0.01, 0.03],
+                    bounds_noise=[0.05, 0.6],
+                    bounds_confusion=[0.01, 0.6],
+                    min_E=20,
                 )
                 ax_fits[row, col].plot(
                     xs,
                     ys,
-                    label=f"MinE=40GeV {print_params(fit_params)}",
+                    label=f" {print_params(fit_params)} (with bounds from 20GeV)",
                     linestyle="--",
                 )
                 ax_fits[row, col].set_title(label)
@@ -697,18 +716,20 @@ print("Saving figure to", fig_E_mH_gluons_path)
 fig_E_mH_gluons.savefig(fig_E_mH_gluons_path)
 
 fig_fit_trials_calojets.tight_layout()
+annotate_matrix_plot_with_arrows(fig_fit_trials_calojets)
 path_cj = os.path.join(outputDir, f"JER_fitting_CaloJets.pdf")
 fig_fit_trials_calojets.savefig(path_cj)
 
 # Similar for fig_fit_trials
 fig_fit_trials.tight_layout()
+annotate_matrix_plot_with_arrows(fig_fit_trials)
 path_pf = os.path.join(outputDir, f"JER_fitting_PFJets.pdf")
 fig_fit_trials.savefig(path_pf)
 
 for prefix in ["neutral", "charged", "photons"]:
     ###########################################
-    # Resolution plots, calo jets vs neutral part of PF jets
-    fig, ax = plt.subplots(5, 4, figsize=(15, 12))
+    # Resolution plots, calo jets vs. neutral part of PF jets
+    fig, ax = plt.subplots(5, 3, figsize=(15, 12))
     for method in [
         "PF_Durham",
         "PF_Durham_IdealMatching",

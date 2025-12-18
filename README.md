@@ -71,7 +71,7 @@ python src/plotting/mass_plots.py --inputDir $PATH_TO_HISTOGRAMS/PF_Durham_Ideal
 ```
 * Finally, produce the matrix plots on which all the events are summarized:
 ```bash
-python src/plotting/joint_plots --inputDir $PATH_TO_HISTOGRAMS
+python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS
 ```
 
 ## Dataset

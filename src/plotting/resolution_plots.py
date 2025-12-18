@@ -33,6 +33,12 @@ os.makedirs(outputDir, exist_ok=True)
 print("Saving to directory:", outputDir)
 
 
+def print_params(popt):
+    if len(popt) == 2:
+        return f"A={round(popt[0], 2)} C={round(popt[1], 2)}"
+    return f"A={round(popt[0], 2)} B={round(popt[2], 2)} C={round(popt[1], 2)}"
+
+
 def point_format(number):
     return str(number).replace(".", "p")
 
@@ -375,15 +381,29 @@ bin_to_histograms_storage_neutral = {}
 method_low_high_mid_point_storage = {}
 
 
-def get_func_fit(mid_points, Rs):
-    # Resolution plot. fit Rs^2 = (a/sqrt(E))^2 + b^2 + (c/E)^2
-    def resolution_func(E, a, b, c):
-        return np.sqrt((a / np.sqrt(E)) ** 2 + b**2 + (c / E) ** 2)
+def get_func_fit(mid_points, Rs, confusion_term=True, min_E=0.0):
+    # basically filter out points with mid_points < min_E
+    mask = np.array(mid_points) >= min_E
+    mid_points = np.array(mid_points)[mask]
+    Rs = np.array(Rs)[mask]
+    if confusion_term:
 
-    popt, pcov = curve_fit(
-        resolution_func, mid_points, Rs, p0=[0.5, 0.03, 0.1], maxfev=10000
-    )
-    # return a smooth function throughout mid_points
+        def resolution_func(E, a, b, c):
+            return np.sqrt((a / np.sqrt(E)) ** 2 + b**2 + (c / E) ** 2)
+
+        popt, pcov = curve_fit(
+            resolution_func, mid_points, Rs, p0=[0.5, 0.03, 0.1], maxfev=10000
+        )
+        # return a smooth function throughout mid_points
+    else:
+
+        def resolution_func(E, a, b):
+            return np.sqrt((a / np.sqrt(E)) ** 2 + b**2)
+
+        popt, pcov = curve_fit(
+            resolution_func, mid_points, Rs, p0=[0.5, 0.03], maxfev=10000
+        )
+        # return a smooth function throughout mid_points
     xs = np.linspace(min(mid_points), max(mid_points), 100)
     ys = resolution_func(xs, *popt)
     popt = np.abs(popt)
@@ -457,10 +477,10 @@ for jet_part in ["_photons", "_neutral", "_charged", "_all"]:
                     f"Not enough points to fit for process {process} using method {method}. Skipping."
                 )
                 continue
-            xs, ys, popt, pcov = get_func_fit(bin_mid_points, sigmaEoverE)
-            print(
-                f"Fitted parameters for {process} using {method}: a={popt[0]:.4f}, b={popt[1]:.4f}"
+            xs, ys, popt, pcov = get_func_fit(
+                bin_mid_points, sigmaEoverE, confusion_term="CaloJet" in inputDir
             )
+            print(f"Fitted parameters for {process} using {method}: {popt}")
             if process not in process_popt_storage:
                 process_popt_storage[process] = {}
             process_popt_storage[process][method + jet_part] = (
@@ -479,8 +499,7 @@ for jet_part in ["_photons", "_neutral", "_charged", "_all"]:
                 ys,
                 LINE_STYLES[process],
                 color=clr,
-                label=HUMAN_READABLE_PROCESS_NAMES[process]
-                + f" A={round(popt[0], 2)} B={round(popt[2], 2)} C={round(popt[1], 2)}",
+                label=HUMAN_READABLE_PROCESS_NAMES[process] + f" {print_params(popt)}",
             )
             ax[1].plot(bin_mid_points, resp, ".--", label=process, color=clr)
             if method in method_to_color:
@@ -488,8 +507,7 @@ for jet_part in ["_photons", "_neutral", "_charged", "_all"]:
                     bin_mid_points,
                     sigmaEoverE,
                     "x",
-                    label=method
-                    + f" A={round(popt[0], 2)} B={round(popt[2], 2)} C={round(popt[1], 2)}",
+                    label=method + f" {print_params(popt)}",
                     color=method_to_color[method],
                 )
                 ax_resolution_per_process[proc_idx, 0].plot(
@@ -519,7 +537,7 @@ for jet_part in ["_photons", "_neutral", "_charged", "_all"]:
                         sigmaEoverE,
                         "x",
                         label=HUMAN_READABLE_PROCESS_NAMES[process]
-                        + f" A={round(popt[0], 2)} B={round(popt[2], 2)} C={round(popt[1], 2)}",
+                        + f" {print_params(popt)}",
                         color=clr,
                     )
                     ax_resolution_per_process_Njets[row, 0].plot(

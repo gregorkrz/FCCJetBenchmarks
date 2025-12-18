@@ -34,7 +34,7 @@ NUMBER_OF_HIGGS_JETS = {
 
 PROCESS_TO_ROW_COL = {
     # three columns for 2,4,6 jets
-    "p8_ee_ZH_vvbb_ecm240": (0, 2),
+    "p8_ee_ZH_vvbb_ecm240": (0, 4),
     "p8_ee_ZH_vvgg_ecm240": (0, 1),
     "p8_ee_ZH_vvqq_ecm240": (0, 0),
     "p8_ee_ZH_bbbb_ecm240": (1, 4),
