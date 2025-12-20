@@ -31,53 +31,25 @@ fccanalysis run src/histmaker.py -- \
 ```
 Alternatively, you can run the histmaker by modifying the provided SLURM script submission job:
 `python scripts/generate_analysis_jobs.py`
-. The script needs to be modified such that the dataset and output paths are are correct.
+. The script needs to be modified such that the dataset and output paths are correct.
 
 The histmaker produces a ROOT file with histograms for each process and each jet algorithm.
 
 
 2. **Run the plotting scripts:**
 
-Print the basic statistics of the produced datasets:
 ```bash
-python src/plotting/print_basic_stats.py --inputDir $PATH_TO_HISTOGRAMS
+bash scripts/create_plots.sh $PATH_TO_HISTOGRAMS
 ```
 
-The plotting scripts are split into three steps such that it is easy to debug.
+The `create_plots.sh` script computes energy resolution plots and produces detailed plots of different jet-level
+and event-level metrics for each folder in `PATH_TO_HISTOGRAMS` (each clustering method).
 
-* For each jet clustering method, produce first the debugging plots:
-
-```bash
-fccanalysis plots src/plotting/debugging_plots.py -- --inputDir $PATH_TO_HISTOGRAMS/PF_Durham
-fccanalysis plots src/plotting/debugging_plots.py -- --inputDir $PATH_TO_HISTOGRAMS/CaloJets_Durham
-fccanalysis plots src/plotting/debugging_plots.py -- --inputDir $PATH_TO_HISTOGRAMS/PF_Durham_IdealMatching
-```
-
-This step is optional, but creates plots with basic statistics of the jets and events to quickly identify any issues.
-The plots are placed in the subfolder `plots_debug`.
-
-* Then, produce energy resolution plots that are placed in `plots_resolution`:
-```bash
-python src/plotting/resolution_plots.py --inputDir $PATH_TO_HISTOGRAMS/PF_Durham
-python src/plotting/resolution_plots.py --inputDir $PATH_TO_HISTOGRAMS/CaloJets_Durham
-python src/plotting/resolution_plots.py --inputDir $PATH_TO_HISTOGRAMS/PF_Durham_IdealMatching
-```
-
-* Then, produce $m_H$ plots (together with some other kinematic variables):
-```bash
-python src/plotting/mass_plots.py --inputDir $PATH_TO_HISTOGRAMS/PF_Durham
-python src/plotting/mass_plots.py --inputDir $PATH_TO_HISTOGRAMS/CaloJets_Durham
-python src/plotting/mass_plots.py --inputDir $PATH_TO_HISTOGRAMS/PF_Durham_IdealMatching
-```
-* Finally, produce the matrix plots on which all the events are summarized:
-```bash
-python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS
-```
 
 ## Dataset
 
 ### Processes
-The dataset uses the [IDEA Delphes card](https://github.com/delphes/delphes/blob/759a24b41b38c70c9ad12be3f4ebe022f98c6d2c/cards/delphes_card_IDEA.tcl).
+Detector effects are simulated using the [IDEA Delphes card](https://github.com/delphes/delphes/blob/759a24b41b38c70c9ad12be3f4ebe022f98c6d2c/cards/delphes_card_IDEA.tcl).
 
 The following processes are simulated at $\sqrt{s} = 240$ GeV using Pythia8 and Delphes:
 
@@ -95,7 +67,8 @@ The following processes are simulated at $\sqrt{s} = 240$ GeV using Pythia8 and 
   | Z(→νν)H(→gg) (p8_ee_ZH_vvgg_ecm240)                        | 2                             |
   | Z(→νν)H(→qq) (p8_ee_ZH_vvqq_ecm240)                        | 2                             |
 
-Unless noted otherwise, q stands for all light quark flavours (u, d, s, c). Each process has 5.05 million samples.ž
+Unless noted otherwise, q stands for all light quark flavours (u, d, s, c). The dataset contains 5.05 million
+samples for each process.
 
 The data are available at `` (for access within SLAC) or provided upon request.
 
@@ -118,14 +91,56 @@ python scripts/organize_dataset_per_process.py --base PATH_TO_DATASET
 To add a new process, `src/process_config.py` needs to be updated with the new process name, number of jets, as well as
 a label, color and line style for plotting.
 
+### Jet performance metrics
+
+
+The following scripts are used to produce plots per each jet clustering method (e.g., Durham, Durham with Calo Jets, etc.)
+
+Print the basic statistics of the produced datasets:
+```bash
+python src/plotting/print_basic_stats.py --inputDir $PATH_TO_HISTOGRAMS
+```
+
+The plotting scripts are split into three steps: 
+
+* Basic debugging plots (placed in the subfolder `plots_debug`):
+
+```bash
+fccanalysis plots src/plotting/debugging_plots.py -- --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
+```
+
+This step is optional, but creates plots with basic statistics of the jets and events to quickly identify any issues.
+
+
+* energy resolution plots (placed in `plots_resolution`):
+```bash
+python src/plotting/resolution_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
+```
+
+* Reconstructed $m_H$ plots (placed in `plots_mass`):
+```bash
+python src/plotting/mass_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
+```
+
+* Matrix plots of different metrics on which all the events are summarized:
+```bash
+python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS
+```
+
 
 ## Main results
 
 
-## Issues / Work in progress
 
+## Issues
+
+### Physics-related
+* The jet energy resolution fits don't work well, especially for the calo jets. It should be a good fit in the 2-jet case.
+* 
+
+### Code-related
+* The slow and messy plotting code needs to be cleaned up.
 * The energy resolution determination (narrowest 68% interval) is somewhat slow as it's written in Python.
-* Messy plotting code needs to be cleaned up.
 
 ## References
 

@@ -14,6 +14,12 @@ parser.add_argument(
     required=True,
     help="Directory containing the results (histmaker histograms) for different jet algorithms",
 )
+parser.add_argument(
+    "--all-folders",
+    action="store_true",
+    help="If set, process all folders found in the input directory",
+)
+
 args = parser.parse_args()
 
 base_dir = args.inputDir
@@ -24,6 +30,17 @@ folders = [
     "PF_Durham_IdealMatching",
 ]
 folder_readable_names = ["PF Jets", "Calo Jets", "PF Jets, Ideal Matching"]
+
+if args.all_folders:
+    # Process all folders in the input directory (except the ones that start with 'plots')
+    folders = sorted(
+        [
+            x
+            for x in os.listdir(base_dir)
+            if os.path.isdir(os.path.join(base_dir, x)) and not x.startswith("plots")
+        ]
+    )
+    folder_readable_names = folders
 
 results = {}
 
@@ -56,33 +73,18 @@ for idx, folder_name in enumerate(folders):
 print(results)
 
 
-def print_table(data):
-    # Extract column names
-    columns = ["Process", "PF Jets", "Calo Jets", "PF Jets, Ideal Matching"]
+def print_table(data, folder_names):
+    # Build the column headers dynamically from the provided folder names
+    columns = ["Process"] + folder_names
 
     # Build rows
     rows = []
     for process, metrics in data.items():
-        rows.append(
-            [
-                process,
-                (
-                    round(metrics.get("PF Jets", ""), 3)
-                    if isinstance(metrics.get("PF Jets"), (int, float))
-                    else ""
-                ),
-                (
-                    round(metrics.get("Calo Jets", ""), 3)
-                    if isinstance(metrics.get("Calo Jets"), (int, float))
-                    else ""
-                ),
-                (
-                    round(metrics.get("PF Jets, Ideal Matching", ""), 3)
-                    if isinstance(metrics.get("PF Jets, Ideal Matching"), (int, float))
-                    else ""
-                ),
-            ]
-        )
+        row = [process]
+        for folder in folder_names:
+            value = metrics.get(folder, "")
+            row.append(round(value, 3) if isinstance(value, (int, float)) else "")
+        rows.append(row)
 
     # Determine column widths
     col_widths = []
@@ -105,4 +107,4 @@ def print_table(data):
         print(format_row(row))
 
 
-print_table(results)
+print_table(results, folder_readable_names)

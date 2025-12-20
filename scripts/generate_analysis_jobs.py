@@ -85,7 +85,7 @@ for command_name in commands:
         stderr = error_logs_prefix + command_name + "_" + process + ".stderr"
         n_cpus = 10
         memory = 80000
-        time = "04:00:00"
+        time = "05:00:00"
         job_name = "{}_{}".format(command_name, process)
         cmd = commands[command_name] + " --only-dataset " + process
         # Now, save the slurm file into jobs/job_name.slurm
@@ -99,8 +99,11 @@ for command_name in commands:
             command_to_run=f"/bin/sh -c '{cmd}'",
         )
         output_filename = f"/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20251114_MatchingR03/{output_folder_name[command_name]}/{process}.root"
-        if ONLY_RUN_UNFINISHED_JOBS and os.path.exists(output_filename):
-            # print("Output file", output_filename, "exists, skipping job", job_name)
+        if ONLY_RUN_UNFINISHED_JOBS and (
+            os.path.exists(output_filename)
+            and os.path.getsize(output_filename) > 10000
+            # Make sure that the file is not corrupted
+        ):
             continue
         filename = "jobs/" + job_name + ".slurm"
         with open(filename, "w") as f:

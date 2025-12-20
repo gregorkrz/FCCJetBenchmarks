@@ -127,7 +127,6 @@ gluon_comparison_processes = {  # process idx to plot idx - group together by n 
 
 
 # Resolution plots, PF vs PF + Ideal matching
-
 fig, ax = plt.subplots(5, 3, figsize=(10, 11))
 fig_mH, ax_mH = plt.subplots(2, 3, figsize=(9, 7))
 fig_mH_twojets, ax_mH_twojets = plt.subplots(4, 2, figsize=(9, 9))
