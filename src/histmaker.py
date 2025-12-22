@@ -288,6 +288,8 @@ def build_graph(df, dataset):
         )
         # Print some of jet_E_reco_over_E_true_Neutral_part, jet_E_reco_over_E_true_Neutral_part
     df = df.Define("jet_E_reco_over_E_true", "std::get<0>(matching_processing)")
+    df = df.Define("jet_deltaTheta", "std::get<4>(matching_processing)")
+    df = df.Define("jet_deltaPhi", "std::get<5>(matching_processing)")
     # Print the first 5 elements
     df = df.Define("E_of_unmatched_reco_jets", "std::get<1>(matching_processing)")
     df = df.Define("num_unmatched_reco_jets", "E_of_unmatched_reco_jets.size()")
@@ -312,6 +314,22 @@ def build_graph(df, dataset):
         output_prefix="binned_E_reco_over_true",
     )
     histograms += hist_jetE
+    df, hist_jet_delta_theta = bin_quantity(
+        df,
+        "jet_deltaTheta",
+        "genjet_energies_matched",
+        bins=bins_jetE,
+        output_prefix="binned_deltaTheta",
+    )
+    histograms += hist_jet_delta_theta
+    df, hist_jet_delta_phi = bin_quantity(
+        df,
+        "jet_deltaPhi",
+        "genjet_energies_matched",
+        bins=bins_jetE,
+        output_prefix="binned_deltaPhi",
+    )
+    histograms += hist_jet_delta_phi
     if args.jet_algorithm != "CaloJetDurham":
         # For studying the NH, charged, and photon components separately
         df, hist_jetE_neutral = bin_quantity(

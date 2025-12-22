@@ -1,7 +1,7 @@
 import os
 
 RUN_SLURM_SCRIPTS = True
-ONLY_RUN_UNFINISHED_JOBS = True
+ONLY_RUN_UNFINISHED_JOBS = False
 # If, it will check for jobs that don't have any output root files
 # (i.e., cancelled due to preemption) and re-run them again...
 
@@ -51,6 +51,8 @@ output_folder_name = {
     "DurhamIdealMatching": "PF_Durham_IdealMatching",
 }
 
+
+## Commands for the main clustering algorithms: Durham, Durham with ideal matching, and CaloJets
 commands = {
     "Durham": command.format(output_folder_name="PF_Durham", jet_algo="Durham"),
     "CaloJets": command.format(
@@ -62,6 +64,7 @@ commands = {
     + " --ideal-matching",
 }
 
+# Commands for the e+e- anti-kt algorithm
 for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
     radius_str = int(radius * 10)
     if len(str(radius_str)) == 1:
@@ -72,6 +75,18 @@ for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
         jet_algo=f"EEAK",
     ) + " --AK-radius {}".format(radius)
     output_folder_name[command_name] = f"PF_AntiKtR{radius_str}"
+
+# Commands for the e+e- anti-kt algorithm with energy recovery
+for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
+    radius_str = int(radius * 10)
+    if len(str(radius_str)) == 1:
+        radius_str = f"0{radius_str}"
+    command_name = f"e_recovery_AK{radius_str}"
+    commands[command_name] = command.format(
+        output_folder_name=f"PF_E_recovery_AntiKtR{radius_str}",
+        jet_algo=f"EEAK",
+    ) + " --AK-radius {} --energy-recovery".format(radius)
+    output_folder_name[command_name] = f"PF_E_recovery_AntiKtR{radius_str}"
 
 error_logs_prefix = "/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/logs/"
 
