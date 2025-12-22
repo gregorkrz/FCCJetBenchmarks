@@ -122,7 +122,7 @@ python src/plotting/resolution_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NA
 python src/plotting/mass_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
 ```
 
-* Matrix plots of different metrics on which all the events are summarized:
+* Matrix plots of different metrics on which all the physics processes are summarized:
 ```bash
 python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS
 ```

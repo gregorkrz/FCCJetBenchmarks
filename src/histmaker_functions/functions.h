@@ -1,8 +1,10 @@
 #ifndef ZHfunctions_H
 #define ZHfunctions_H
 #include "ROOT/RLogger.hxx"
+#include <algorithm>
 #include <cmath>
 #include <math.h>
+#include <numeric>
 #include <vector>
 #define rdfFatal R__LOG_FATAL(ROOT::Detail::RDF::RDFLogChannel())
 #define rdfError R__LOG_ERROR(ROOT::Detail::RDF::RDFLogChannel())
@@ -106,6 +108,60 @@ vector<int> get_reco_particle_jet_mapping(int num_particles,
     }
   }
   return result;
+}
+
+JetClustering::FCCAnalysesJet
+energy_recovery(JetClustering::FCCAnalysesJet jets, int n_jets) {
+  // Early exit if nothing to do
+  if (n_jets <= 0 || jets.jets.empty()) {
+    return JetClustering::FCCAnalysesJet();
+  }
+
+  // Sort jets by energy and keep the indices so we can rearrange constituents
+  std::vector<size_t> indices(jets.jets.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  std::sort(indices.begin(), indices.end(), [&jets](size_t a, size_t b) {
+    return jets.jets[a].E() > jets.jets[b].E();
+  });
+
+  const size_t n_leading = std::min<size_t>(n_jets, indices.size());
+  std::vector<fastjet::PseudoJet> leading_jets;
+  std::vector<std::vector<int>> leading_constituents;
+  leading_jets.reserve(n_leading);
+  leading_constituents.reserve(n_leading);
+
+  // Take the leading (up to n_jets) highest-energy jets as seeds
+  for (size_t i = 0; i < n_leading; ++i) {
+    size_t idx = indices[i];
+    leading_jets.push_back(jets.jets[idx]);
+    leading_constituents.push_back(jets.constituents[idx]);
+  }
+
+  // Recombine every remaining jet with the closest seed in angle
+  for (size_t i = n_leading; i < indices.size(); ++i) {
+    size_t idx = indices[i];
+    auto &extra_jet = jets.jets[idx];
+
+    // Find the seed with the smallest angular distance
+    size_t best_seed = 0;
+    double best_angle =
+        leading_jets.empty() ? 0.0 : leading_jets[0].delta_R(extra_jet);
+    for (size_t s = 1; s < leading_jets.size(); ++s) {
+      double angle = leading_jets[s].delta_R(extra_jet);
+      if (angle < best_angle) {
+        best_angle = angle;
+        best_seed = s;
+      }
+    }
+
+    leading_jets[best_seed] += extra_jet;
+    auto &extra_constituents = jets.constituents[idx];
+    leading_constituents[best_seed].insert(
+        leading_constituents[best_seed].end(), extra_constituents.begin(),
+        extra_constituents.end());
+  }
+
+  return JetClustering::FCCAnalysesJet(leading_jets, leading_constituents);
 }
 
 JetClustering::FCCAnalysesJet match_genjet_constituents_to_reco_particles(
@@ -405,7 +461,6 @@ vector<int> get_MC_quark_index_for_Higgs(Vec_mc mc,
 
   return quark_indices;
 }
-
 
 vector<float> get_jet_distances(Vec_rp jets) {
   // Get jet distances between each pair of jets (in deltaR)

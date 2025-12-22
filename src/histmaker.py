@@ -53,6 +53,12 @@ parser.add_argument(
     help="If set, it will only process one dataset.",
 )
 
+parser.add_argument(
+    "--energy-recovery",
+    action="store_true",
+    help="If set, energy recovery will be used for the anti-kt or generalized e+e- anti-kt jet algorithm",
+)
+
 if "--" in sys.argv:
     argv_after_sep = sys.argv[sys.argv.index("--") + 1 :]
     args = parser.parse_args(argv_after_sep)

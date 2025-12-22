@@ -1,3 +1,26 @@
+def _compute_anti_kt_jets(
+    df, jet_clustering_function, energy_recovery, output_name, n_jets_energy_recovery
+):
+    """
+
+    :param jet_clustering_function: Either JetClustering::clustering_antikt or JetClustering::clustering_ee_gen_antikt
+    :return:
+    """
+    if energy_recovery:
+        output_name_jets = "full_jets_{}".format(output_name)
+    else:
+        output_name_jets = output_name
+    df = df.Define(output_name_jets, jet_clustering_function)
+    if energy_recovery:
+        df = df.Define(
+            output_name,
+            "FCCAnalyses::ZHfunctions::energy_recovery({}, {})".format(
+                output_name_jets, n_jets_energy_recovery
+            ),
+        )
+    return df
+
+
 def get_jets(
     df,
     vec_rp_name,
@@ -5,6 +28,8 @@ def get_jets(
     AK_radius=-1,
     output_name="FastJet_jets",
     use_ee_AK=False,
+    AK_energy_recovery=False,
+    AK_energy_recovery_N_jets=2,
 ):
     """
     This function computes jets for a given collection of reconstructed particles or MC particles.
@@ -46,21 +71,26 @@ def get_jets(
     else:
         assert AK_radius > 0
         if not use_ee_AK:
-            print("Using AK with R=", AK_radius)
-            df = df.Define(
-                output_name,
+            jets_func = (
                 "JetClustering::clustering_antikt({}, 0, 0, 0, 0)(fj_in_{})".format(
                     AK_radius, output_name
-                ),
+                )
             )
+            print("Using AK with R=", AK_radius)
         else:
-            print("Using generalized e+e- AK with R=", AK_radius)
-            df = df.Define(
-                output_name,
+            jets_func = (
                 "JetClustering::clustering_ee_genkt({}, 0, 0, 0)(fj_in_{})".format(
                     AK_radius, output_name
-                ),
+                )
             )
+            print("Using generalized e+e- AK with R=", AK_radius)
+        df = _compute_anti_kt_jets(
+            df,
+            jets_func,
+            AK_energy_recovery,
+            output_name,
+            n_jets_energy_recovery=AK_energy_recovery_N_jets,
+        )
     return df
 
 
@@ -89,6 +119,9 @@ def compute_jets_from_args(df, args, N_jets):
         assert args.AK_radius > 0
         if args.jet_algorithm == "EEAK":
             kwargs["use_ee_AK"] = True
+        if args.energy_recovery:
+            kwargs["AK_energy_recovery"] = True
+            kwargs["AK_energy_recovery_N_jets"] = N_jets
     elif args.jet_algorithm == "CaloJetDurham":
         kwargs["N_Durham"] = N_jets
     else:

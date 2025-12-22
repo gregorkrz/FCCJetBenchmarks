@@ -149,7 +149,8 @@ def get_func_fit(
     if confusion_term:
 
         def resolution_func(E, a, b, c):
-            return np.sqrt((a / np.sqrt(E)) ** 2 + b**2 + (c / E) ** 2)
+            # return np.sqrt((a / np.sqrt(E)) ** 2 + b**2 + (c / E) ** 2)
+            return a / np.sqrt(E) + b + c / E
 
         bounds = (
             [bounds_noise[0], bounds_constant[0], bounds_confusion[0]],
@@ -167,7 +168,7 @@ def get_func_fit(
     else:
 
         def resolution_func(E, a, b):
-            return np.sqrt((a / np.sqrt(E)) ** 2 + b**2)
+            return a / np.sqrt(E) + b
 
         bounds = (
             [bounds_noise[0], bounds_constant[0]],
