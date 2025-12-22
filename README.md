@@ -1,5 +1,5 @@
 # FCCJetBenchmarks
-Jet performance benchmarks using the FCCAnalysis framework.
+Jet performance benchmark toolkit using the FCCAnalysis framework.
 
 ## Overview
 
@@ -124,7 +124,14 @@ python src/plotting/mass_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
 
 * Matrix plots of different metrics on which all the physics processes are summarized:
 ```bash
+# Main results
 python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS
+
+# Comparison of Durham and anti-kt, with and without energy recovery
+python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --AK-comparison
+python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --AK-comparison --energy-recovery
+
+
 ```
 
 

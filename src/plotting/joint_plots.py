@@ -5,6 +5,7 @@ from ROOT import TFile
 from scipy.optimize import curve_fit
 import argparse
 import os
+import sys
 from src.process_config import (
     PROCESS_COLORS,
     HUMAN_READABLE_PROCESS_NAMES,
@@ -15,11 +16,21 @@ from src.process_config import (
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--inputDir", type=str, required=True)
-
+parser.add_argument(
+    "--AK-comparison", action="store_true"
+)  # If turned on, it will produce plots for comparison of anti-kt and Durham
+parser.add_argument(
+    "--energy-recovery", action="store_true"  # If toggled, it will turn on the
+)
 args = parser.parse_args()
 
 inputDir = args.inputDir
 outputDir = os.path.join(inputDir, "plots")
+if args.AK_comparison:
+    if args.energy_recovery:
+        outputDir = os.path.join(outputDir, "comparison_AK_energy_recovery")
+    else:
+        outputDir = os.path.join(outputDir, "comparison_AK")
 os.makedirs(outputDir, exist_ok=True)
 
 bins_E = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
@@ -96,11 +107,24 @@ def root_file_get_hist_and_edges(root_file, hist_name, rebin_factor=1):
     return y, edges
 
 
-method_dict = {
-    "PF_Durham_IdealMatching": "PFJets + Ideal Matching",
-    "PF_Durham": "PFJets",
-    "CaloJets_Durham": "CaloJets",
-}
+if args.energy_recovery:
+    AK_prefix = "PF_E_recovery_AntiKtR"
+else:
+    AK_prefix = "PF_AntiKtR"
+
+if args.AK_comparison:
+    method_dict = {"PF_Durham": "Durham"}
+    for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
+        radius_str = int(radius * 10)
+        if len(str(radius_str)) == 1:
+            radius_str = f"0{radius_str}"
+        method_dict[f"{AK_prefix}{radius_str}"] = f"AK{radius}-ER"
+else:
+    method_dict = {
+        "PF_Durham_IdealMatching": "PFJets + Ideal Matching",
+        "PF_Durham": "PFJets",
+        "CaloJets_Durham": "CaloJets",
+    }
 
 process_for_detailed_bins_plots = [
     "p8_ee_ZH_vvbb_ecm240",
@@ -114,7 +138,7 @@ twojet_processes = [
     "p8_ee_ZH_vvqq_ecm240",
 ]
 
-gluon_comparison_processes = {  # process idx to plot idx - group together by n jets
+gluon_comparison_processes = {  # process idx to plot idx - group together by 2 jets and 4 jets
     # Two jets
     "p8_ee_ZH_vvgg_ecm240": 0,
     "p8_ee_ZH_vvqq_ecm240": 0,
@@ -124,7 +148,6 @@ gluon_comparison_processes = {  # process idx to plot idx - group together by n 
     "p8_ee_ZH_bbgg_ecm240": 1,
     "p8_ee_ZH_bbbb_ecm240": 1,
 }
-
 
 # Resolution plots, PF vs PF + Ideal matching
 fig, ax = plt.subplots(5, 3, figsize=(10, 11))
@@ -184,7 +207,32 @@ def get_func_fit(
     return xs, ys, popt, pcov
 
 
-for method in ["PF_Durham", "PF_Durham_IdealMatching"]:
+if args.AK_comparison:
+    methods_filtered = sorted(method_dict.keys())
+    method_color = {"PF_Durham": "#1f77b4"}  # nice blue for Durham
+    # build purple shades for AntiKt radii, getting darker with radius
+    ak_keys = [k for k in methods_filtered if k.startswith(AK_prefix)]
+
+    def _radius_key(k):
+        try:
+            return int(k.split("R")[-1])
+        except Exception:
+            return 0
+
+    ak_keys_sorted = sorted(ak_keys, key=_radius_key)
+    cmap = plt.cm.Purples
+    vals = np.linspace(0.4, 0.9, max(1, len(ak_keys_sorted)))
+
+    def _rgba_to_hex(rgba):
+        r, g, b, _ = rgba
+        return "#{:02x}{:02x}{:02x}".format(int(r * 255), int(g * 255), int(b * 255))
+
+    for i, k in enumerate(ak_keys_sorted):
+        method_color[k] = _rgba_to_hex(cmap(vals[i]))
+    method_linestyle = {key: "-" for key in methods_filtered}
+
+else:
+    methods_filtered = ["PF_Durham", "PF_Durham_IdealMatching"]
     method_color = {
         "PF_Durham": "blue",
         "PF_Durham_IdealMatching": "orange",
@@ -193,6 +241,7 @@ for method in ["PF_Durham", "PF_Durham_IdealMatching"]:
         "PF_Durham": "-",
         "PF_Durham_IdealMatching": "--",
     }
+for method in methods_filtered:
     f = pickle.load(
         open(
             os.path.join(
@@ -409,16 +458,21 @@ for j in range(len(ax_mH_twojets)):
 fig.tight_layout()
 annotate_matrix_plot_with_arrows(fig)
 fig.tight_layout()
-fig_path = os.path.join(outputDir, f"JER_comparison_PF_and_ideal_matching.pdf")
+if args.AK_comparsion:
+    fig_path = os.path.join(outputDir, f"Jet_Energy_Resolution.pdf")
+    fig_mH_path = os.path.join(outputDir, f"Higgs_mass.pdf")
+    fig_mH_twojets_path = os.path.join(outputDir, f"Higgs_mass_2jets.pdf")
+else:
+    fig_path = os.path.join(outputDir, f"JER_comparison_PF_and_ideal_matching.pdf")
+    fig_mH_path = os.path.join(
+        outputDir, f"Higgs_mass_comparison_PF_and_ideal_matching.pdf"
+    )
+    fig_mH_twojets_path = os.path.join(
+        outputDir, f"Higgs_mass_comparison_PF_and_ideal_matching_2jets.pdf"
+    )
 
 fig_mH.tight_layout()
-fig_mH_path = os.path.join(
-    outputDir, f"Higgs_mass_comparison_PF_and_ideal_matching.pdf"
-)
 fig_mH_twojets.tight_layout()
-fig_mH_twojets_path = os.path.join(
-    outputDir, f"Higgs_mass_comparison_PF_and_ideal_matching_2jets.pdf"
-)
 
 print("Saving figure to", fig_mH_path)
 print("Saving figure to", fig_mH_twojets_path)
@@ -427,6 +481,9 @@ print("Saving figure to", fig_path)
 fig.savefig(fig_path)
 fig_mH.savefig(fig_mH_path)
 fig_mH_twojets.savefig(fig_mH_twojets_path)
+
+if args.AK_comparison:
+    sys.exit(0)
 
 #############################################
 # Resolution plots, PF vs PF+Ideal matching #
@@ -439,244 +496,236 @@ fig_fit_trials, ax_fit_trials = plt.subplots(5, 3, figsize=(10, 11))
 fig_fit_trials_calojets, ax_fit_trials_calojets = plt.subplots(5, 3, figsize=(10, 11))
 ################################################################################################################
 
-for prefix in ["_all"]:
-    figs_processes, axs_processes = {}, {}
-    histogram_limits = [[0, 2], [0.3, 1.4], [0.75, 1.15], [0.95, 1.05], [0.99, 1.01]]
-    for method in [
-        "PF_Durham",
-        "CaloJets_Durham",
-        "PF_Durham_IdealMatching",
-    ]:
-        method_color = {
-            "PF_Durham": "blue",
-            "CaloJets_Durham": "green",
-            "PF_Durham_IdealMatching": "orange",
-        }
-        method_linestyle = {  # For the m_H plots
-            "PF_Durham": "-",
-            "CaloJets_Durham": "--",
-            "PF_Durham_IdealMatching": ":",
-        }
-        f = pickle.load(
-            open(
-                os.path.join(
-                    inputDir,
-                    f"{method}/plots_resolution/energy_fit_params_per_process.pkl",
-                ),
-                "rb",
-            )
+figs_processes, axs_processes = {}, {}
+histogram_limits = [[0, 2], [0.3, 1.4], [0.75, 1.15], [0.95, 1.05], [0.99, 1.01]]
+for method in [
+    "PF_Durham",
+    "CaloJets_Durham",
+    "PF_Durham_IdealMatching",
+]:
+    method_color = {
+        "PF_Durham": "blue",
+        "CaloJets_Durham": "green",
+        "PF_Durham_IdealMatching": "orange",
+    }
+    method_linestyle = {  # For the m_H plots
+        "PF_Durham": "-",
+        "CaloJets_Durham": "--",
+        "PF_Durham_IdealMatching": ":",
+    }
+    f = pickle.load(
+        open(
+            os.path.join(
+                inputDir,
+                f"{method}/plots_resolution/energy_fit_params_per_process.pkl",
+            ),
+            "rb",
         )
-        f_mH = pickle.load(
-            open(
-                os.path.join(
-                    inputDir, f"{method}/plots_mass/Higgs_mass_histograms_data.pkl"
-                ),
-                "rb",
-            )
+    )
+    f_mH = pickle.load(
+        open(
+            os.path.join(
+                inputDir, f"{method}/plots_mass/Higgs_mass_histograms_data.pkl"
+            ),
+            "rb",
         )
-        for i, process in enumerate(PROCESS_COLORS.keys()):
-            if process not in f:
-                continue
-            color = PROCESS_COLORS[process]
-            label = HUMAN_READABLE_PROCESS_NAMES[process]
-            if process in process_for_detailed_bins_plots:
-                # Make detailed binning plots for these processes
-                if method == "CaloJets_Durham":
-                    binning_metadata = f[process]["std68_all"]
-                else:
-                    binning_metadata = f[process]["std68" + prefix]
-                hist_names = binning_metadata[7]
-                if process not in figs_processes:
-                    n_bins = len(binning_metadata[6])
-                    figs_processes[process], axs_processes[process] = plt.subplots(
-                        n_bins,
-                        len(histogram_limits),
-                        figsize=(15, len(histogram_limits) * n_bins),
+    )
+    for i, process in enumerate(PROCESS_COLORS.keys()):
+        if process not in f:
+            continue
+        color = PROCESS_COLORS[process]
+        label = HUMAN_READABLE_PROCESS_NAMES[process]
+        if process in process_for_detailed_bins_plots:
+            # Make detailed binning plots for these processes
+            if method == "CaloJets_Durham":
+                binning_metadata = f[process]["std68_all"]
+            else:
+                binning_metadata = f[process]["std68_all"]
+            hist_names = binning_metadata[7]
+            if process not in figs_processes:
+                n_bins = len(binning_metadata[6])
+                figs_processes[process], axs_processes[process] = plt.subplots(
+                    n_bins,
+                    len(histogram_limits),
+                    figsize=(15, len(histogram_limits) * n_bins),
+                )
+            for b in range(n_bins):
+                low_point, high_point, mpv_point = binning_metadata[6][b]
+                y_hist, edges = root_file_get_hist_and_edges(
+                    os.path.join(inputDir, f"{method}/{process}.root"),
+                    hist_names[b],
+                )
+                # Now plot this in each column of bin b.
+                # Each plot has different x axis limits (historam_limits)
+                for col in range(len(histogram_limits)):
+                    mask = (edges[:-1] >= histogram_limits[col][0]) & (
+                        edges[1:] <= histogram_limits[col][1]
                     )
-                for b in range(n_bins):
-                    low_point, high_point, mpv_point = binning_metadata[6][b]
-                    y_hist, edges = root_file_get_hist_and_edges(
-                        os.path.join(inputDir, f"{method}/{process}.root"),
-                        hist_names[b],
+                    # Do a step histogram using mask
+                    axs_processes[process][b, col].step(
+                        edges[:-1][mask],
+                        y_hist[mask],
+                        where="post",
+                        color=method_color[method],
+                        label=f"{method_dict[method]}",
+                        alpha=0.7,
                     )
-                    # Now plot this in each column of bin b.
-                    # Each plot has different x axis limits (historam_limits)
-                    for col in range(len(histogram_limits)):
-                        mask = (edges[:-1] >= histogram_limits[col][0]) & (
-                            edges[1:] <= histogram_limits[col][1]
-                        )
-                        # Do a step histogram using mask
-                        axs_processes[process][b, col].step(
-                            edges[:-1][mask],
-                            y_hist[mask],
-                            where="post",
+                    # Also plot low, high (--) and MPV (|) lines vertically, if they fall within the histogram limits
+                    # These vertical lines shouldn't have any legend entries and should be in the method_color
+                    if (
+                        histogram_limits[col][0]
+                        <= low_point
+                        <= histogram_limits[col][1]
+                    ):
+                        axs_processes[process][b, col].axvline(
+                            low_point,
                             color=method_color[method],
-                            label=f"{method_dict[method]}",
+                            linestyle="--",
                             alpha=0.7,
                         )
-                        # Also plot low, high (--) and MPV (|) lines vertically, if they fall within the histogram limits
-                        # These vertical lines shouldn't have any legend entries and should be in the method_color
-                        if (
-                            histogram_limits[col][0]
-                            <= low_point
-                            <= histogram_limits[col][1]
-                        ):
-                            axs_processes[process][b, col].axvline(
-                                low_point,
-                                color=method_color[method],
-                                linestyle="--",
-                                alpha=0.7,
-                            )
-                        if (
-                            histogram_limits[col][0]
-                            <= high_point
-                            <= histogram_limits[col][1]
-                        ):
-                            axs_processes[process][b, col].axvline(
-                                high_point,
-                                color=method_color[method],
-                                linestyle="--",
-                                alpha=0.7,
-                            )
-                        if (
-                            histogram_limits[col][0]
-                            <= mpv_point
-                            <= histogram_limits[col][1]
-                        ):
-                            axs_processes[process][b, col].axvline(
-                                mpv_point,
-                                color=method_color[method],
-                                linestyle=":",
-                                alpha=0.7,
-                            )
-                        axs_processes[process][b, col].set_title(
-                            f"[{bins_E[b]}, {bins_E[b+1]}] GeV"
+                    if (
+                        histogram_limits[col][0]
+                        <= high_point
+                        <= histogram_limits[col][1]
+                    ):
+                        axs_processes[process][b, col].axvline(
+                            high_point,
+                            color=method_color[method],
+                            linestyle="--",
+                            alpha=0.7,
                         )
-                        # If it's the last column, put legend to the bottom of the plot
-                        if (
-                            col == len(histogram_limits) - 1
-                            or col == len(histogram_limits) - 2
-                        ):
-                            axs_processes[process][b, col].legend(loc="lower right")
-                        else:
-                            axs_processes[process][b, col].legend()
-                        axs_processes[process][b, col].grid(True)
-            linestyle = "--"
-            if method == "CaloJets_Durham":
-                cp = f[process]["std68_all"]
-            else:
-                cp = f[process]["std68" + prefix]
-            xs, ys = cp[2], cp[3]
-            x_pts, y_pts = cp[4], cp[5]
-            if prefix == "_all":
-                col, row = PROCESS_TO_ROW_COL[process]
-                xs, ys, fit_params, fit_cov = get_func_fit(
-                    x_pts, y_pts, confusion_term="CaloJet" in method
-                )
-                ax[row, col].plot(
-                    xs,
-                    ys,
-                    label=f"{method_dict[method]} {print_params(fit_params)}",
-                    color=method_color[method],
-                    linestyle=linestyle,
-                )
-                ax[row, col].plot(
-                    x_pts, y_pts, "x", color=method_color[method], markersize=4
-                )
-                ax[row, col].set_ylabel("$\sigma_E / E_{true}$")
-                ax[row, col].set_title(
-                    label
-                )  # + rf"({print_noise_model(fit_params)})")
-                if "CaloJet" in method:
-                    ax_fits = ax_fit_trials_calojets
-                elif "IdealMatching" not in method:
-                    ax_fits = ax_fit_trials
-                else:
-                    # skip
-                    continue
-
-                ax_fits[row, col].plot(
-                    x_pts, y_pts, "x", markersize=4, label=method_dict[method]
-                )
-                xs, ys, fit_params, fit_cov = get_func_fit(
-                    x_pts, y_pts, confusion_term=True
-                )
-                ax_fits[row, col].plot(
-                    xs,
-                    ys,
-                    label=f"{print_params(fit_params)}",
-                    linestyle="--",
-                )
-                xs, ys, fit_params, fit_cov = get_func_fit(
-                    x_pts, y_pts, confusion_term=False
-                )
-                ax_fits[row, col].plot(
-                    xs,
-                    ys,
-                    label=f"{print_params(fit_params)}",
-                    linestyle="--",
-                )
-                xs, ys, fit_params, fit_cov = get_func_fit(
-                    x_pts,
-                    y_pts,
-                    confusion_term=True,
-                    bounds_constant=[0.01, 0.03],
-                    bounds_noise=[0.05, 0.6],
-                    bounds_confusion=[0.01, 0.6],
-                    min_E=20,
-                )
-                ax_fits[row, col].plot(
-                    xs,
-                    ys,
-                    label=f" {print_params(fit_params)} (with bounds from 20GeV)",
-                    linestyle="--",
-                )
-                ax_fits[row, col].set_title(label)
-
-            Higgs_x, Higgs_y = (
-                f_mH[process]["x_vals_reco"],
-                f_mH[process]["y_vals_reco"],
-            )
-            if prefix == "_all":
-                if LINE_STYLES[process] == ":":
-                    ax_mH[0, 0].plot(
-                        Higgs_x,
-                        Higgs_y,
-                        label=f"{label} ({method_dict[method]})",
-                        color=PROCESS_COLORS[process],
-                        linestyle=method_linestyle[method],
+                    if (
+                        histogram_limits[col][0]
+                        <= mpv_point
+                        <= histogram_limits[col][1]
+                    ):
+                        axs_processes[process][b, col].axvline(
+                            mpv_point,
+                            color=method_color[method],
+                            linestyle=":",
+                            alpha=0.7,
+                        )
+                    axs_processes[process][b, col].set_title(
+                        f"[{bins_E[b]}, {bins_E[b+1]}] GeV"
                     )
-                    ax_mH[0, 1].plot(
-                        Higgs_x,
-                        Higgs_y,
-                        label=f"{label} ({method_dict[method]})",
-                        color=PROCESS_COLORS[process],
-                        linestyle=method_linestyle[method],
-                    )
-                    ax_mH[0, 0].set_title(r"H → Light-flavour jets")
-                elif LINE_STYLES[process] == "-":
-                    ax_mH[1, 0].plot(
-                        Higgs_x,
-                        Higgs_y,
-                        label=f"{label} ({method_dict[method]})",
-                        color=PROCESS_COLORS[process],
-                        linestyle=method_linestyle[method],
-                    )
-                    ax_mH[1, 1].plot(
-                        Higgs_x,
-                        Higgs_y,
-                        label=f"{label} ({method_dict[method]})",
-                        color=PROCESS_COLORS[process],
-                        linestyle=method_linestyle[method],
-                    )
-                    ax_mH[1, 0].set_title(r"H → Light-flavour and b-jets")
-    for process in figs_processes:
-        figs_processes[process].tight_layout()
-        fig_process_path = os.path.join(
-            outputDir, f"Detailed_JER_histograms_{process}{prefix}.pdf"
+                    # If it's the last column, put legend to the bottom of the plot
+                    if (
+                        col == len(histogram_limits) - 1
+                        or col == len(histogram_limits) - 2
+                    ):
+                        axs_processes[process][b, col].legend(loc="lower right")
+                    else:
+                        axs_processes[process][b, col].legend()
+                    axs_processes[process][b, col].grid(True)
+        linestyle = "--"
+        if method == "CaloJets_Durham":
+            cp = f[process]["std68_all"]
+        else:
+            cp = f[process]["std68_all"]
+        xs, ys = cp[2], cp[3]
+        x_pts, y_pts = cp[4], cp[5]
+        col, row = PROCESS_TO_ROW_COL[process]
+        xs, ys, fit_params, fit_cov = get_func_fit(
+            x_pts, y_pts, confusion_term="CaloJet" in method
         )
-        print("Saving figure to", fig_process_path)
-        figs_processes[process].savefig(fig_process_path)
+        ax[row, col].plot(
+            xs,
+            ys,
+            label=f"{method_dict[method]} {print_params(fit_params)}",
+            color=method_color[method],
+            linestyle=linestyle,
+        )
+        ax[row, col].plot(x_pts, y_pts, "x", color=method_color[method], markersize=4)
+        ax[row, col].set_ylabel("$\sigma_E / E_{true}$")
+        ax[row, col].set_title(label)  # + rf"({print_noise_model(fit_params)})")
+        if "CaloJet" in method:
+            ax_fits = ax_fit_trials_calojets
+        elif "IdealMatching" not in method:
+            ax_fits = ax_fit_trials
+        else:
+            # skip
+            continue
+
+        ax_fits[row, col].plot(
+            x_pts, y_pts, "x", markersize=4, label=method_dict[method]
+        )
+        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=True)
+        ax_fits[row, col].plot(
+            xs,
+            ys,
+            label=f"{print_params(fit_params)}",
+            linestyle="--",
+        )
+        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=False)
+        ax_fits[row, col].plot(
+            xs,
+            ys,
+            label=f"{print_params(fit_params)}",
+            linestyle="--",
+        )
+        xs, ys, fit_params, fit_cov = get_func_fit(
+            x_pts,
+            y_pts,
+            confusion_term=True,
+            bounds_constant=[0.01, 0.03],
+            bounds_noise=[0.05, 0.6],
+            bounds_confusion=[0.01, 0.6],
+            min_E=20,
+        )
+        ax_fits[row, col].plot(
+            xs,
+            ys,
+            label=f" {print_params(fit_params)} (with bounds from 20GeV)",
+            linestyle="--",
+        )
+        ax_fits[row, col].set_title(label)
+        Higgs_x, Higgs_y = (
+            f_mH[process]["x_vals_reco"],
+            f_mH[process]["y_vals_reco"],
+        )
+        if LINE_STYLES[process] == ":":
+            ax_mH[0, 0].step(
+                Higgs_x,
+                Higgs_y,
+                where="post",
+                label=f"{label} ({method_dict[method]})",
+                color=PROCESS_COLORS[process],
+                linestyle=method_linestyle[method],
+            )
+            ax_mH[0, 1].step(
+                Higgs_x,
+                Higgs_y,
+                where="post",
+                label=f"{label} ({method_dict[method]})",
+                color=PROCESS_COLORS[process],
+                linestyle=method_linestyle[method],
+            )
+            ax_mH[0, 0].set_title(r"H → Light-flavour jets")
+        elif LINE_STYLES[process] == "-":
+            ax_mH[1, 0].step(
+                Higgs_x,
+                Higgs_y,
+                where="post",
+                label=f"{label} ({method_dict[method]})",
+                color=PROCESS_COLORS[process],
+                linestyle=method_linestyle[method],
+            )
+            ax_mH[1, 1].step(
+                Higgs_x,
+                Higgs_y,
+                where="post",
+                label=f"{label} ({method_dict[method]})",
+                color=PROCESS_COLORS[process],
+                linestyle=method_linestyle[method],
+            )
+            ax_mH[1, 0].set_title(r"H → Light-flavour and b-jets")
+for process in figs_processes:
+    figs_processes[process].tight_layout()
+    fig_process_path = os.path.join(
+        outputDir, f"Detailed_JER_histograms_{process}_all.pdf"
+    )
+    print("Saving figure to", fig_process_path)
+    figs_processes[process].savefig(fig_process_path)
 
 for i in range(len(ax_mH)):
     for j in range(len(ax_mH[i])):
@@ -726,86 +775,89 @@ annotate_matrix_plot_with_arrows(fig_fit_trials)
 path_pf = os.path.join(outputDir, f"JER_fitting_PFJets.pdf")
 fig_fit_trials.savefig(path_pf)
 
-for prefix in ["neutral", "charged", "photons"]:
-    ###########################################
-    # Resolution plots, calo jets vs. neutral part of PF jets
-    fig, ax = plt.subplots(5, 3, figsize=(15, 12))
-    for method in [
-        "PF_Durham",
-        "PF_Durham_IdealMatching",
-        "CaloJets_Durham",
-    ]:
-        method_color = {
-            "PF_Durham": "blue",
-            "CaloJets_Durham": "green",
-            "PF_Durham_IdealMatching": "orange",
-        }
-        method_linestyle = {  # For the $m_H$ plots
-            "PF_Durham": "-",
-            "CaloJets_Durham": "--",
-            "PF_Durham_IdealMatching": ":",
-        }
-        method_text = {
-            "PF_Durham": "PF jets, {}".format(prefix),
-            "CaloJets_Durham": "Calo jets",
-            "PF_Durham_IdealMatching": "PF jets, ideal matching",
-        }
-        f = pickle.load(
-            open(
-                os.path.join(
-                    inputDir,
-                    f"{method}/plots_resolution/energy_fit_params_per_process.pkl",
-                ),
-                "rb",
+if not args.AK_comparison:
+    for prefix in ["neutral", "charged", "photons"]:
+        ###########################################
+        # Resolution plots, calo jets vs. neutral part of PF jets
+        fig, ax = plt.subplots(5, 3, figsize=(15, 12))
+        for method in [
+            "PF_Durham",
+            "PF_Durham_IdealMatching",
+            "CaloJets_Durham",
+        ]:
+            method_color = {
+                "PF_Durham": "blue",
+                "CaloJets_Durham": "green",
+                "PF_Durham_IdealMatching": "orange",
+            }
+            method_linestyle = {  # For the $m_H$ plots
+                "PF_Durham": "-",
+                "CaloJets_Durham": "--",
+                "PF_Durham_IdealMatching": ":",
+            }
+            method_text = {
+                "PF_Durham": "PF jets, {}".format(prefix),
+                "CaloJets_Durham": "Calo jets",
+                "PF_Durham_IdealMatching": "PF jets, ideal matching",
+            }
+            f = pickle.load(
+                open(
+                    os.path.join(
+                        inputDir,
+                        f"{method}/plots_resolution/energy_fit_params_per_process.pkl",
+                    ),
+                    "rb",
+                )
             )
+            f_mH = pickle.load(
+                open(
+                    os.path.join(
+                        inputDir, f"{method}/plots_mass/Higgs_mass_histograms_data.pkl"
+                    ),
+                    "rb",
+                )
+            )
+            for i, process in enumerate(PROCESS_COLORS.keys()):
+                if process not in f:
+                    continue
+                color = PROCESS_COLORS[process]
+                label = HUMAN_READABLE_PROCESS_NAMES[process]
+                linestyle = "--"
+                if method == "CaloJets_Durham":
+                    cp = f[process]["std68_all"]
+                else:
+                    cp = f[process]["std68_" + prefix]
+                # xs, ys = cp[2], cp[3]
+                # estimate parameters here from x_pts and y_pts
+                x_pts, y_pts = cp[4], cp[5]
+                xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts)
+                col, row = PROCESS_TO_ROW_COL[process]
+                ax[row, col].plot(
+                    xs,
+                    ys,
+                    label=f"{method_text[method]} {print_params(fit_params)}",
+                    color=method_color[method],
+                    linestyle=linestyle,
+                )
+                ax[row, col].plot(
+                    x_pts, y_pts, "x", color=method_color[method], markersize=4
+                )
+                ax[row, col].set_ylabel("$\sigma_E / E_{true}$")
+                ax[row, col].set_title(label)
+                ax[row, col].set_xlabel("$E_{true}$ [GeV]")
+                ax[row, col].set_ylim([0, 0.35])
+                Higgs_x, Higgs_y = (
+                    f_mH[process]["x_vals_reco"],
+                    f_mH[process]["y_vals_reco"],
+                )
+        for i in range(len(ax)):
+            for j in range(len(ax[i])):
+                ax[i, j].legend(fontsize=6.5)
+                ax[i, j].grid()
+        fig.tight_layout()
+        annotate_matrix_plot_with_arrows(fig)
+        fig_path = os.path.join(
+            outputDir, f"JER_comparison_{prefix}_PF_vs_CaloJets.pdf"
         )
-        f_mH = pickle.load(
-            open(
-                os.path.join(
-                    inputDir, f"{method}/plots_mass/Higgs_mass_histograms_data.pkl"
-                ),
-                "rb",
-            )
-        )
-        for i, process in enumerate(PROCESS_COLORS.keys()):
-            if process not in f:
-                continue
-            color = PROCESS_COLORS[process]
-            label = HUMAN_READABLE_PROCESS_NAMES[process]
-            linestyle = "--"
-            if method == "CaloJets_Durham":
-                cp = f[process]["std68_all"]
-            else:
-                cp = f[process]["std68_" + prefix]
-            # xs, ys = cp[2], cp[3]
-            # estimate parameters here from x_pts and y_pts
-            x_pts, y_pts = cp[4], cp[5]
-            xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts)
-            col, row = PROCESS_TO_ROW_COL[process]
-            ax[row, col].plot(
-                xs,
-                ys,
-                label=f"{method_text[method]} {print_params(fit_params)}",
-                color=method_color[method],
-                linestyle=linestyle,
-            )
-            ax[row, col].plot(
-                x_pts, y_pts, "x", color=method_color[method], markersize=4
-            )
-            ax[row, col].set_ylabel("$\sigma_E / E_{true}$")
-            ax[row, col].set_title(label)
-            ax[row, col].set_xlabel("$E_{true}$ [GeV]")
-            ax[row, col].set_ylim([0, 0.35])
-            Higgs_x, Higgs_y = (
-                f_mH[process]["x_vals_reco"],
-                f_mH[process]["y_vals_reco"],
-            )
-    for i in range(len(ax)):
-        for j in range(len(ax[i])):
-            ax[i, j].legend(fontsize=6.5)
-            ax[i, j].grid()
-    fig.tight_layout()
-    annotate_matrix_plot_with_arrows(fig)
-    fig_path = os.path.join(outputDir, f"JER_comparison_{prefix}_PF_vs_CaloJets.pdf")
-    print("Saving figure to", fig_path)
-    fig.savefig(fig_path)
+        print("Saving figure to", fig_path)
+        fig.savefig(fig_path)

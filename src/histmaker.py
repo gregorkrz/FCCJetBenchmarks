@@ -305,7 +305,7 @@ def build_graph(df, dataset):
         hist_genjet_all_energies,
         hist_genjet_matched_energies,
     ]
-    # this can be replaced with df, hist_E = bin_quantity(df, "
+    # This can be replaced with df, hist_E = bin_quantity(df, "
     df, hist_jetE = bin_quantity(
         df,
         "jet_E_reco_over_E_true",

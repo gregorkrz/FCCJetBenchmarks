@@ -25,7 +25,7 @@ for METHOD_DIR in "$INPUT_DIR"/*; do
     METHOD_NAME="$(basename "$METHOD_DIR")"
 
     # Skip directories starting with 'plots'
-    if [[ "$METHOD_NAME" == plots* || "$METHOD_NAME" == PF_AntiKt* ]]; then
+    if [[ "$METHOD_NAME" == plots*  ]]; then
       echo "Skipping $METHOD_NAME"
       continue
     fi
