@@ -31,7 +31,7 @@ parser.add_argument(
 parser.add_argument(
     "--jet-matching-radius",
     type=float,
-    default=1.0,
+    default=0.3,
     help="The radius parameter for AK and ee-AK",
 )
 parser.add_argument(
@@ -320,6 +320,7 @@ def build_graph(df, dataset):
         "genjet_energies_matched",
         bins=bins_jetE,
         output_prefix="binned_deltaTheta",
+        histogram_bounds=(-0.1, 0.1),
     )
     histograms += hist_jet_delta_theta
     df, hist_jet_delta_phi = bin_quantity(
@@ -328,7 +329,9 @@ def build_graph(df, dataset):
         "genjet_energies_matched",
         bins=bins_jetE,
         output_prefix="binned_deltaPhi",
+        histogram_bounds=(-0.1, 0.1),
     )
+
     histograms += hist_jet_delta_phi
     if args.jet_algorithm != "CaloJetDurham":
         # For studying the NH, charged, and photon components separately

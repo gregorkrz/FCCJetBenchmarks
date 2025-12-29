@@ -21,6 +21,7 @@ matplotlib.rcParams.update(
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--inputDir", type=str, required=True)
+parser.add_argument("--angles-only", action="store_true", help="Only plot angular resolutions")
 
 args = parser.parse_args()
 
@@ -58,7 +59,12 @@ for file in os.listdir(inputDir):
         proc_name = file.replace(".root", "")
         processList[proc_name] = {"fraction": 1}
 
+processList = {
+    "p8_ee_ZH_vvqq_ecm240": {"fraction": 1},
+}
+
 ########################################################################################################
+
 binsE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 bins_eta = [-5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 5]
 bins_costheta = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]
@@ -98,6 +104,9 @@ def get_result_for_process(
     suffix="",
     sigma_method="std68",
     root_histogram_prefix="binned_E_reco_over_true_",
+    wmin=0.7,
+    wmax=1.2,
+    divide_by_MPV=True
 ):
     # Sigma methods: std68, RMS, interquantile_range
     field_names = []
@@ -105,24 +114,28 @@ def get_result_for_process(
     fig_hist, ax_hist = plt.subplots(
         3, 1, figsize=(8, 8.5)
     )  # stack two plots vertically
-    eps = 0.0002
-
+    eps = 0.0005
+    if not divide_by_MPV:
+        eps = 0.001 # try a bit bigger epsilon for angle resolution
     # else:
     #    raise Exception # TEMPORARILY
-    def get_std68(theHist, bin_edges, percentage=0.683, epsilon=eps):
+
+    def get_std68(
+        theHist, bin_edges, percentage=0.683, epsilon=eps, wmin=0.7, wmax=1.2
+    ):
         # theHist, bin_edges = np.histogram(data_for_hist, bins=bins, density=True)
-        theHist[0] = 0.0
+        if wmin > 0:
+            theHist[0] = 0.0  # for the energy histograms
         s = np.sum(theHist * np.diff(bin_edges))
         if s != 0:
             theHist /= s  # normalize the histogram to 1
-        wmin = 0.7
-        wmax = 1.2
         weight = 0.0
+        #print("Bin edges:", bin_edges[:10], bin_edges[-10:], "len", len(bin_edges))
+        #print("Histogram:", theHist[:10], theHist[-10:],"max",  max(theHist), "len", len(theHist))
         points = []
         sums = []
         am = np.argmax(theHist)
         MPV = 0.5 * (bin_edges[am] + bin_edges[am + 1])
-
         # Fill list of bin centers and the integral up to those point
         for i in range(len(bin_edges) - 1):
             weight += theHist[i] * (bin_edges[i + 1] - bin_edges[i])
@@ -145,7 +158,6 @@ def get_result_for_process(
         if low == wmin and high == wmax:
             # Didn't fit well, try mean and stdev
             # Compute the stdev from the histogram
-            std68 = 0.0
             print("Fitting didn't work")
             mean = np.sum(
                 [
@@ -155,7 +167,6 @@ def get_result_for_process(
                     for i in range(len(theHist))
                 ]
             )
-            print("MEAN", mean)
             std68 = np.sqrt(
                 np.sum(
                     [
@@ -166,7 +177,7 @@ def get_result_for_process(
                     ]
                 )
             )
-            print("STD68", std68)
+            print("mean:", mean, "68% int.:", std68)
             return std68, mean - std68, mean + std68, MPV
         return 0.5 * (high - low), low, high, MPV
 
@@ -250,7 +261,9 @@ def get_result_for_process(
         bins_to_histograms[i] = [y_normalized, edges]
         yc = copy(y)
         if sigma_method == "std68":
-            std68, low, high, MPV = get_std68(y, edges, percentage=0.683, epsilon=eps)
+            std68, low, high, MPV = get_std68(
+                y, edges, percentage=0.683, epsilon=eps, wmin=wmin, wmax=wmax
+            )
         elif sigma_method == "RMS":
             MPV = 0.5 * (edges[np.argmax(y)] + edges[np.argmax(y) + 1])
             mean = np.sum(
@@ -349,20 +362,24 @@ def get_result_for_process(
         if (not np.isnan(bin_mid)) and (not np.isnan(std68)) and n_jets_in_bin > 50000:
             # More than 10k statistics for a good fit with the fine binning that we are using
             bin_mid_points.append(bin_mid)
-            sigmaEoverE.append(std68 / MPV)
+            if divide_by_MPV:
+                sigmaEoverE.append(std68 / MPV)
+            else:
+                sigmaEoverE.append(std68)
             responses.append(MPV)
             print(
-                f"Bin [{bins[i]}, {bins[i+1]}]: {method} = {std68:.4f}, low = {low:.4f}, high = {high:.4f}, MPV={MPV},N={np.sum(yc)} N_in_bin={n_jets_in_bin}"
+                f"Bin [{bins[i]}, {bins[i+1]}]: {method} = {std68:.4f}, low = {low:.4f}, high = {high:.4f}, MPV={MPV}, N={np.sum(yc)} N_in_bin={n_jets_in_bin}"
             )
         else:
-            print("NaN encountered in bin mid-point calculation.")
+            print("NaN encountered in bin mid-point calculation / not enough statistics. Number of jets in bin:", n_jets_in_bin)
     ax_hist[0].legend(fontsize=9)
     ax_hist[0].set_xlabel(r"$E_{reco} / E_{true}$")
     ax_hist[0].set_ylabel("Entries")
     ax_hist[1].set_xlabel(r"$E_{reco} / E_{true}$")
     ax_hist[1].set_ylabel("Entries")
-    ax_hist[1].set_xlim([0.75, 1.15])
-    ax_hist[2].set_xlim([0.75, 1.15])
+    ax_hist[1].set_xlim([wmin, wmax])
+    ax_hist[2].set_xlim([wmin, wmax])
+
     ax_hist[2].set_yscale("log")
     ax_hist[2].set_xlabel(r"$E_{reco} / E_{true}$")
     ax_hist[2].set_ylabel("Entries")
@@ -424,23 +441,90 @@ jet_part_to_histogram_prefix = {
     "_photons": "binned_E_Photon_reco_over_true_FullGenJet_",
 }
 
-for jet_part in ["_photons", "_neutral", "_charged", "_all"]:
-    fig_resolution_per_process, ax_resolution_per_process = plt.subplots(
-        len(processList), 2, figsize=(8, 4 * len(processList)), sharex=False
-    )
-    fig_resolution_per_process_Njets, ax_resolution_per_process_Njets = plt.subplots(
-        2, 2, figsize=(9, 9), sharex=False
-    )
+jet_parts_to_process = ["_all"] if args.angles_only else ["_photons", "_neutral", "_charged", "_all"]
+for jet_part in jet_parts_to_process:
+    if not args.angles_only:
+        fig_resolution_per_process, ax_resolution_per_process = plt.subplots(
+            len(processList), 2, figsize=(8, 4 * len(processList)), sharex=False
+        )
+        fig_resolution_per_process_Njets, ax_resolution_per_process_Njets = plt.subplots(
+            2, 2, figsize=(9, 9), sharex=False
+        )
     # Left column: resolution, right column: response. Comparison of gaussian_fit and std68
     for method in ["std68"]:
         print("-----------------------------------------------------------")
         print("Using peak width method:", method)
         # fig, ax = plt.subplots(2, 1, figsize=(8, 6))
         # the same as above but make it (10, 6) and make the upper plot 2/3 and lower plot 1/3 of the height
-        fig, ax = plt.subplots(
-            2, 1, figsize=(10, 6), gridspec_kw={"height_ratios": [2, 1]}
-        )
+        if not args.angles_only:
+            fig, ax = plt.subplots(
+                2, 1, figsize=(10, 6), gridspec_kw={"height_ratios": [2, 1]}
+            )
+        if jet_part == "_all":
+            fig_theta, ax_theta = plt.subplots(
+                2, 1, figsize=(10, 6), gridspec_kw={"height_ratios": [2, 1]}
+            )
+            fig_phi, ax_phi = plt.subplots(
+                2, 1, figsize=(10, 6), gridspec_kw={"height_ratios": [2, 1]}
+            )
         for proc_idx, process in enumerate(sorted(list(processList.keys()))):
+            if jet_part == "_all":
+                (E_theta, sigma_theta, fig_theta_hist, response_theta, _, _, _) = get_result_for_process(
+                    process,
+                    sigma_method=method,
+                    root_histogram_prefix="binned_deltaTheta_",
+                    wmin=-0.05,
+                    wmax=0.05,
+                    divide_by_MPV=False
+                )
+                xs_theta, ys_theta, popt_theta, pcov_theta = get_func_fit(
+                    E_theta, sigma_theta, confusion_term=False
+                )
+                (E_phi, sigma_phi, fig_phi_hist, response_phi, _, _, _) = get_result_for_process(
+                    process,
+                    sigma_method=method,
+                    root_histogram_prefix="binned_deltaPhi_",
+                    wmin=-0.05,
+                    wmax=0.05,
+                    divide_by_MPV=False
+                )
+                fig_theta_hist.savefig(os.path.join(outputDir, "bins_theta_{}.pdf".format(process)))
+                fig_phi_hist.savefig(os.path.join(outputDir, "bins_phi_{}.pdf".format(process)))
+                clr = PROCESS_COLORS.get(process, f"C{proc_idx}")
+                xs_phi, ys_phi, popt_phi, pcov_phi = get_func_fit(
+                    E_phi, sigma_phi, confusion_term=False
+                )
+                ax_theta[0].plot(E_theta, sigma_theta, "x", color=clr)
+                ax_theta[0].plot(
+                    xs_theta,
+                    ys_theta,
+                    LINE_STYLES[process],
+                    color=clr,
+                    label=HUMAN_READABLE_PROCESS_NAMES[process]
+                    + f" {print_params(popt_theta)}",
+                )
+                ax_theta[1].plot(E_theta, response_theta, ".--", label=process, color=clr)
+                ax_phi[0].plot(E_phi, sigma_phi, "x", color=clr)
+                ax_phi[0].plot(
+                    xs_phi,
+                    ys_phi,
+                    LINE_STYLES[process],
+                    color=clr,
+                    label=HUMAN_READABLE_PROCESS_NAMES[process]
+                    + f" {print_params(popt_phi)}",
+                )
+                ax_phi[1].plot(E_phi, response_phi, ".--", label=process, color=clr)
+                ax_phi[1].set_xlabel("$E_{true}$ [GeV]")
+                ax_phi[1].set_ylabel("Response in $\phi$")
+
+                ax_theta[0].set_xlabel("$E_{true}$ [GeV]")
+                ax_theta[0].set_ylabel(r"$\sigma_{\theta}$ [rad]")
+                ax_theta[1].set_xlabel("$E_{true}$ [GeV]")
+                ax_theta[1].set_ylabel("Response in $\\theta$")
+                ax_phi[0].set_xlabel("$E_{true}$ [GeV]")
+                ax_phi[0].set_ylabel(r"$\sigma_{\phi}$ [rad]")
+            if args.angles_only:
+                continue
             (
                 bin_mid_points,
                 sigmaEoverE,
@@ -551,72 +635,88 @@ for jet_part in ["_photons", "_neutral", "_charged", "_all"]:
                         label=HUMAN_READABLE_PROCESS_NAMES[process],
                         color=clr,
                     )
-            ax_resolution_per_process[proc_idx, 0].set_xlabel("$E_{true}$ [GeV]")
-            ax_resolution_per_process[proc_idx, 0].set_ylabel(r"$\sigma_E / E$")
-            ax_resolution_per_process[proc_idx, 1].set_xlabel("$E_{true}$ [GeV]")
-            ax_resolution_per_process[proc_idx, 1].set_ylabel("Response")
-            # Also turn legend and grid on
-            ax_resolution_per_process[proc_idx, 0].legend()
-            ax_resolution_per_process[proc_idx, 0].grid(True)
-            ax_resolution_per_process[proc_idx, 1].grid(True)
-        ax_resolution_per_process_Njets[0, 0].set_title("Final state containing b-jets")
-        ax_resolution_per_process_Njets[1, 0].set_title(
-            "Final state containing only light and gluon jets"
+            if not args.angles_only:
+                ax_resolution_per_process[proc_idx, 0].set_xlabel("$E_{true}$ [GeV]")
+                ax_resolution_per_process[proc_idx, 0].set_ylabel(r"$\sigma_E / E$")
+                ax_resolution_per_process[proc_idx, 1].set_xlabel("$E_{true}$ [GeV]")
+                ax_resolution_per_process[proc_idx, 1].set_ylabel("Response")
+                # Also turn legend and grid on
+                ax_resolution_per_process[proc_idx, 0].legend()
+                ax_resolution_per_process[proc_idx, 0].grid(True)
+                ax_resolution_per_process[proc_idx, 1].grid(True)
+        if not args.angles_only:
+            ax_resolution_per_process_Njets[0, 0].set_title("Final state containing b-jets")
+            ax_resolution_per_process_Njets[1, 0].set_title(
+                "Final state containing only light and gluon jets"
+            )
+            ax_resolution_per_process_Njets[0, 0].legend(
+                title="l ∈ {u, d, s}; q ∈ {u, d, s, c, b}", fontsize=9.5, title_fontsize=8
+            )
+            ax_resolution_per_process_Njets[1, 0].legend(
+                title="l ∈ {u, d, s}; q ∈ {u, d, s, c, b}", fontsize=9.5, title_fontsize=8
+            )
+            ax_resolution_per_process_Njets[0, 0].set_xlabel("$E_{true}$ [GeV]")
+            ax_resolution_per_process_Njets[0, 1].set_xlabel("$E_{true}$ [GeV]")
+            ax_resolution_per_process_Njets[0, 0].set_ylabel(r"$\sigma_E / E$")
+            ax_resolution_per_process_Njets[1, 0].set_ylabel(r"$\sigma_E / E$")
+            ax_resolution_per_process_Njets[1, 1].set_ylabel(r"$\sigma_E / E$")
+            ax[0].legend()
+            ax[0].set_xlabel("$E_{true}$ [GeV]")
+            ax[0].set_ylabel(r"$\sigma_E / E$")
+            ax[0].set_title(
+                r"Jet Energy Resolution ($\frac{A}{\sqrt{E}}$ ⊕ \frac{B}{E} ⊕ $C$)"
+            )
+            ax[0].grid(True, alpha=0.3)
+            ax[1].set_ylabel("Response")
+            ax[1].set_xlabel("$E_{true}$ [GeV]")
+            ax[1].grid()
+            fig.tight_layout()
+            fig.savefig(
+                os.path.join(outputDir, "jet_energy_resolution_{}.pdf".format(method))
+            )
+        if jet_part == "_all":
+            fig_theta.tight_layout()
+            fig_theta.savefig(
+                os.path.join(outputDir, "jet_theta_resolution_{}.pdf".format(method))
+            )
+            fig_phi.tight_layout()
+            fig_phi.savefig(
+                os.path.join(outputDir, "jet_phi_resolution_{}.pdf".format(method))
+            )
+    if not args.angles_only:
+        fig_resolution_per_process.tight_layout()
+        fig_resolution_per_process_Njets.tight_layout()
+        fig_resolution_per_process.savefig(
+            os.path.join(
+                outputDir,
+                "jet_energy_resolution_per_process_comparison{}.pdf".format(jet_part),
+            )
         )
-        ax_resolution_per_process_Njets[0, 0].legend(
-            title="l ∈ {u, d, s}; q ∈ {u, d, s, c, b}", fontsize=9.5, title_fontsize=8
+        fig_resolution_per_process_Njets.savefig(
+            os.path.join(
+                outputDir,
+                "jet_energy_resolution_per_process_comparison_Njets{}.pdf".format(jet_part),
+            )
         )
-        ax_resolution_per_process_Njets[1, 0].legend(
-            title="l ∈ {u, d, s}; q ∈ {u, d, s, c, b}", fontsize=9.5, title_fontsize=8
-        )
-        ax_resolution_per_process_Njets[0, 0].set_xlabel("$E_{true}$ [GeV]")
-        ax_resolution_per_process_Njets[0, 1].set_xlabel("$E_{true}$ [GeV]")
-        ax_resolution_per_process_Njets[0, 0].set_ylabel(r"$\sigma_E / E$")
-        ax_resolution_per_process_Njets[1, 0].set_ylabel(r"$\sigma_E / E$")
-        ax_resolution_per_process_Njets[1, 1].set_ylabel(r"$\sigma_E / E$")
-        ax[0].legend()
-        ax[0].set_xlabel("$E_{true}$ [GeV]")
-        ax[0].set_ylabel(r"$\sigma_E / E$")
-        ax[0].set_title(
-            r"Jet Energy Resolution ($\frac{A}{\sqrt{E}}$ ⊕ \frac{B}{E} ⊕ $C$)"
-        )
-        ax[0].grid(True, alpha=0.3)
-        ax[1].set_ylabel("Response")
-        ax[1].set_xlabel("$E_{true}$ [GeV]")
-        ax[1].grid()
-        fig.tight_layout()
-        fig.savefig(
-            os.path.join(outputDir, "jet_energy_resolution_{}.pdf".format(method))
-        )
-    fig_resolution_per_process.tight_layout()
-    fig_resolution_per_process_Njets.tight_layout()
-    fig_resolution_per_process.savefig(
-        os.path.join(
-            outputDir,
-            "jet_energy_resolution_per_process_comparison{}.pdf".format(jet_part),
-        )
-    )
-    fig_resolution_per_process_Njets.savefig(
-        os.path.join(
-            outputDir,
-            "jet_energy_resolution_per_process_comparison_Njets{}.pdf".format(jet_part),
-        )
-    )
 
-pickle.dump(
-    process_popt_storage,
-    open(
-        os.path.join(outputDir, "energy_fit_params_per_process.pkl"),
-        "wb",
-    ),
-)
-method_to_color = {
-    "std68": "blue",
-    "RMS": "orange",
-    "interquantile_range": "green",
-    "DSCB": "red",
-    "gaussian_fit": "purple",
-}
+if not args.angles_only:
+    pickle.dump(
+        process_popt_storage,
+        open(
+            os.path.join(outputDir, "energy_fit_params_per_process.pkl"),
+            "wb",
+        ),
+    )
+    method_to_color = {
+        "std68": "blue",
+        "RMS": "orange",
+        "interquantile_range": "green",
+        "DSCB": "red",
+        "gaussian_fit": "purple",
+    }
+else:
+    import sys
+    sys.exit(0)
 
 ### Plot each bin on a separate plot, but different processes on same plot ###
 fig, ax = plt.subplots(
@@ -708,7 +808,7 @@ for method in ["std68"]:  # gaussian_fit optionally
         os.path.join(outputDir, "jet_Eta_resolution_data_points_{}.pdf".format(method))
     )
 
-for method in ["std68", "gaussian_fit"]:
+for method in ["std68"]:
     # fig, ax = plt.subplots(2, 1, figsize=(8, 6))
     fig, ax = plt.subplots(2, 1, figsize=(10, 6), gridspec_kw={"height_ratios": [2, 1]})
     for process in sorted(list(processList.keys())):

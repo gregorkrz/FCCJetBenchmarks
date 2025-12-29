@@ -1,7 +1,7 @@
 import os
 
 RUN_SLURM_SCRIPTS = True
-ONLY_RUN_UNFINISHED_JOBS = False
+ONLY_RUN_UNFINISHED_JOBS = True
 # If, it will check for jobs that don't have any output root files
 # (i.e., cancelled due to preemption) and re-run them again...
 
@@ -26,9 +26,10 @@ export APPTAINER_TMPDIR=/sdf/scratch/atlas/gregork/apptainer_tmp
 singularity exec -B /sdf -B /cvmfs -B /fs --nv docker://gkrz/alma:v0 {command_to_run}
 """
 
+
 command = ".  /cvmfs/sw.hsf.org/key4hep/setup.sh -r 2025-05-29 && fccanalysis run --n-threads 1 src/histmaker.py -- \
   --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20251114 \
-  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20251114_MatchingR03/{output_folder_name} \
+  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20251114_MatchingR03_20251229/{output_folder_name} \
   --jet-algorithm {jet_algo} --jet-matching-radius 0.3 "
 
 process_list = [
@@ -65,7 +66,7 @@ commands = {
 }
 
 # Commands for the e+e- anti-kt algorithm
-for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
+for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 2.0]:
     radius_str = int(radius * 10)
     if len(str(radius_str)) == 1:
         radius_str = f"0{radius_str}"
@@ -77,7 +78,7 @@ for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
     output_folder_name[command_name] = f"PF_AntiKtR{radius_str}"
 
 # Commands for the e+e- anti-kt algorithm with energy recovery
-for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
+for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 2.0]:
     radius_str = int(radius * 10)
     if len(str(radius_str)) == 1:
         radius_str = f"0{radius_str}"
@@ -91,6 +92,7 @@ for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
 error_logs_prefix = "/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/logs/"
 
 # Make a dir "jobs" if it doesn't exist
+
 if not os.path.exists("jobs"):
     os.mkdir("jobs")
 
@@ -113,7 +115,7 @@ for command_name in commands:
             error_logs=stderr,
             command_to_run=f"/bin/sh -c '{cmd}'",
         )
-        output_filename = f"/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20251114_MatchingR03/{output_folder_name[command_name]}/{process}.root"
+        output_filename = f"/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20251114_MatchingR03_20251229/{output_folder_name[command_name]}/{process}.root"
         if ONLY_RUN_UNFINISHED_JOBS and (
             os.path.exists(output_filename)
             and os.path.getsize(output_filename) > 10000

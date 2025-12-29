@@ -49,10 +49,11 @@ done
 # Produce the summary matrix plots (comparison of different methods with respect to different metrics)
 # ------------------------------------------------------------------
 python src/plotting/joint_plots.py --inputDir $INPUT_DIR
+python src/plotting/joint_plots.py --inputDir $INPUT_DIR --AK-comparison
+python src/plotting/joint_plots.py --inputDir $INPUT_DIR --AK-comparison --energy-recovery
 
 # ------------------------------------------------------------------
 # Run final statistics command
 # ------------------------------------------------------------------
 echo "Running basic statistics on full input directory..."
-python src/plotting/print_basic_stats.py --inputDir "$INPUT_DIR"
-
+python src/plotting/print_basic_stats.py --inputDir "$INPUT_DIR" --all-folders

@@ -73,7 +73,7 @@ for idx, folder_name in enumerate(folders):
 print(results)
 
 
-def print_table(data, folder_names):
+def print_table(data, folder_names, output_filename=None):
     # Build the column headers dynamically from the provided folder names
     columns = ["Process"] + folder_names
 
@@ -99,12 +99,22 @@ def print_table(data, folder_names):
         return " | ".join(f"{str(val):<{col_widths[i]}}" for i, val in enumerate(row))
 
     # Print header
-    print(format_row(columns))
-    print("-+-".join("-" * w for w in col_widths))
+    output = ""
+    output += format_row(columns) + "\n"
+    output += "-+-".join("-" * w for w in col_widths) + "\n"
 
     # Print rows
     for row in rows:
-        print(format_row(row))
+        output += format_row(row) + "\n"
+    print(output)
+    if output_filename:
+        # write output to file
+        with open(output_filename, "w") as f:
+            f.write(output)
 
 
-print_table(results, folder_readable_names)
+print_table(
+    results,
+    folder_readable_names,
+    output_filename=os.path.join(base_dir, "filter_pass_rate_table.txt"),
+)

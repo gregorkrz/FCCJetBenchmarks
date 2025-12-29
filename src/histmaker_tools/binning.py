@@ -8,6 +8,7 @@ def bin_quantity(
     bins,
     output_prefix="binned_E_reco_over_true",
     histogram_labels="Ereco/Etrue;Ereco/Etrue;Events",
+    histogram_bounds=(0.0, 2.0),
 ):
     """
 
@@ -34,8 +35,8 @@ def bin_quantity(
                 df_column_name,
                 histogram_labels,
                 5000,
-                0,
-                2.0,
+                histogram_bounds[0],
+                histogram_bounds[1],
             ),
             df_column_name,
         )

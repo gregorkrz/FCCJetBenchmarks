@@ -80,8 +80,8 @@ def annotate_matrix_plot_with_arrows(fig):
 
 def print_params(popt):
     if len(popt) == 2:
-        return f"A={round(popt[0], 2)} C={round(popt[1], 2)}"
-    return f"A={round(popt[0], 2)} B={round(popt[2], 2)} C={round(popt[1], 2)}"
+        return f"S={round(popt[0], 2)} C={round(popt[1], 2)}"
+    return f"S={round(popt[0], 2)} N={round(popt[2], 2)} C={round(popt[1], 2)}"
 
 
 def print_noise_model(popt):
@@ -118,7 +118,10 @@ if args.AK_comparison:
         radius_str = int(radius * 10)
         if len(str(radius_str)) == 1:
             radius_str = f"0{radius_str}"
-        method_dict[f"{AK_prefix}{radius_str}"] = f"AK{radius}-ER"
+        if args.energy_recovery:
+            method_dict[f"{AK_prefix}{radius_str}"] = f"AK{radius}-ER"
+        else:
+            method_dict[f"{AK_prefix}{radius_str}"] = f"AK{radius}"
 else:
     method_dict = {
         "PF_Durham_IdealMatching": "PFJets + Ideal Matching",
@@ -152,6 +155,7 @@ gluon_comparison_processes = {  # process idx to plot idx - group together by 2 
 # Resolution plots, PF vs PF + Ideal matching
 fig, ax = plt.subplots(5, 3, figsize=(10, 11))
 fig_mH, ax_mH = plt.subplots(2, 3, figsize=(9, 7))
+fig_mH_per_process, ax_mH_per_process = plt.subplots(5, 3, figsize=(10, 11))
 fig_mH_twojets, ax_mH_twojets = plt.subplots(4, 2, figsize=(9, 9))
 fig_E_mH_gluons, ax_E_mH_gluons = plt.subplots(2, 3, figsize=(12, 8))
 
@@ -164,6 +168,7 @@ def get_func_fit(
     bounds_constant=[0, np.inf],
     bounds_confusion=[0, np.inf],
     bounds_noise=[0, np.inf],
+    error_summation=False,
 ):
     # basically filter out points with mid_points < min_E
     mask = np.array(mid_points) >= min_E
@@ -172,7 +177,8 @@ def get_func_fit(
     if confusion_term:
 
         def resolution_func(E, a, b, c):
-            # return np.sqrt((a / np.sqrt(E)) ** 2 + b**2 + (c / E) ** 2)
+            if error_summation:
+                return np.sqrt((a / np.sqrt(E)) ** 2 + b**2 + (c / E) ** 2)
             return a / np.sqrt(E) + b + c / E
 
         bounds = (
@@ -191,6 +197,8 @@ def get_func_fit(
     else:
 
         def resolution_func(E, a, b):
+            if error_summation:
+                return np.sqrt((a / np.sqrt(E)) ** 2 + b**2)
             return a / np.sqrt(E) + b
 
         bounds = (
@@ -351,6 +359,16 @@ for method in methods_filtered:
                     linestyle=method_linestyle[method],
                 )
             ax_mH[1, 0].set_title(r"H → Light and b-jets")
+        ax_mH_per_process[row, col].hist(
+            Higgs_x,
+            bins=Higgs_edges,
+            weights=Higgs_y,
+            histtype="step",
+            label=f"{method_dict[method]}",
+            color=method_color[method],
+            linestyle=method_linestyle[method],
+        )
+        ax_mH_per_process[row, col].set_title(label)
         if NUMBER_OF_JETS.get(process) == 2 and method == "PF_Durham":
             ax_mH_twojets[0, 0].hist(
                 Higgs_x,
@@ -446,6 +464,7 @@ for i in range(len(ax_mH)):
     ax_mH[i, 2].set_yscale("log")
     ax_mH[i, 1].set_xlim(100, 140)
     ax_mH[i, 0].legend(title="q ∈ {u, d, s}", fontsize=7.5, title_fontsize=8)
+
 for j in range(len(ax_mH_twojets)):
     for i in range(len(ax_mH_twojets[0])):
         ax_mH_twojets[j, i].set_xlabel("$m_H$ (reco.) [GeV]")
@@ -455,10 +474,18 @@ for j in range(len(ax_mH_twojets)):
             title="2-jet processes", fontsize=7.5, title_fontsize=8
         )
 
+for j in range(len(ax_mH_per_process)):
+    for i in range(len(ax_mH_per_process[j])):
+        ax_mH_per_process[j, i].set_xlabel("$m_H$ (reco.) [GeV]")
+        ax_mH_per_process[j, i].grid()
+        ax_mH_per_process[j, i].set_xlim(90, 150)
+        ax_mH_per_process[j, i].legend(fontsize=6.5)
 fig.tight_layout()
 annotate_matrix_plot_with_arrows(fig)
 fig.tight_layout()
-if args.AK_comparsion:
+fig_mH_path_per_process = os.path.join(outputDir, f"Higgs_mass_per_process.pdf")
+
+if args.AK_comparison:
     fig_path = os.path.join(outputDir, f"Jet_Energy_Resolution.pdf")
     fig_mH_path = os.path.join(outputDir, f"Higgs_mass.pdf")
     fig_mH_twojets_path = os.path.join(outputDir, f"Higgs_mass_2jets.pdf")
@@ -473,14 +500,17 @@ else:
 
 fig_mH.tight_layout()
 fig_mH_twojets.tight_layout()
+fig_mH_per_process.tight_layout()
 
 print("Saving figure to", fig_mH_path)
 print("Saving figure to", fig_mH_twojets_path)
 print("Saving figure to", fig_path)
+print("Saving figure to", fig_mH_path_per_process)
 
 fig.savefig(fig_path)
 fig_mH.savefig(fig_mH_path)
 fig_mH_twojets.savefig(fig_mH_twojets_path)
+fig_mH_per_process.savefig(fig_mH_path_per_process)
 
 if args.AK_comparison:
     sys.exit(0)
@@ -649,14 +679,40 @@ for method in [
         ax_fits[row, col].plot(
             x_pts, y_pts, "x", markersize=4, label=method_dict[method]
         )
-        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=True)
+        # xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=True)
+        # ax_fits[row, col].plot(
+        #    xs,
+        #    ys,
+        #    label=f"{print_params(fit_params)}",
+        #    linestyle="--",
+        # )
+        xs, ys, fit_params, fit_cov = get_func_fit(
+            x_pts,
+            y_pts,
+            confusion_term=True,
+            error_summation=True,
+            bounds_constant=[0.01, 0.03],
+        )
         ax_fits[row, col].plot(
             xs,
             ys,
             label=f"{print_params(fit_params)}",
             linestyle="--",
         )
-        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=False)
+        # xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=False)
+        # ax_fits[row, col].plot(
+        #    xs,
+        #    ys,
+        #    label=f"{print_params(fit_params)}",
+        #    linestyle="--",
+        # )
+        xs, ys, fit_params, fit_cov = get_func_fit(
+            x_pts,
+            y_pts,
+            confusion_term=False,
+            error_summation=True,
+            bounds_constant=[0.01, 0.03],
+        )
         ax_fits[row, col].plot(
             xs,
             ys,
@@ -667,15 +723,22 @@ for method in [
             x_pts,
             y_pts,
             confusion_term=True,
-            bounds_constant=[0.01, 0.03],
-            bounds_noise=[0.05, 0.6],
+            bounds_constant=[0.005, 0.04],
+            bounds_noise=[0.0, 0.6],
             bounds_confusion=[0.01, 0.6],
-            min_E=20,
+            min_E=0,
         )
+
+        # ax_fits[row, col].plot(
+        #    xs,
+        #    ys,
+        #    label=f" {print_params(fit_params)} (with bounds from 20GeV)",
+        #    linestyle="--",
+        # )
         ax_fits[row, col].plot(
             xs,
             ys,
-            label=f" {print_params(fit_params)} (with bounds from 20GeV)",
+            label=f"{print_params(fit_params)} (with bounds)",
             linestyle="--",
         )
         ax_fits[row, col].set_title(label)
