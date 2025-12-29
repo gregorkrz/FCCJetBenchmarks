@@ -3,7 +3,19 @@ Jet performance benchmark toolkit using the FCCAnalysis framework.
 
 ## Overview
 
+This toolkit provides a comprehensive benchmarking framework for evaluating jet reconstruction performance in $e^+e^-$ collisions at the Future Circular Collider (FCC). The analysis focuses on ZH production processes at $\sqrt{s} = 240$ GeV, comparing different jet clustering algorithms (Durham, anti-kt, and generalized $e^+e^-$ anti-kt) and reconstruction approaches (particle flow vs. calorimeter jets).
 
+The framework enables systematic evaluation of jet energy resolution, angular resolution, and reconstructed Higgs mass resolution across multiple physics processes with varying jet multiplicities (2, 4, and 6 jets). It supports both standard and ideal matching scenarios for truth-reconstruction comparisons.
+
+## Dependencies
+
+This project requires:
+- **FCCAnalyses framework** (via Key4HEP software stack)
+- **Python 3.x** with packages: `numpy`, `matplotlib`, `scipy`
+- **ROOT** (for reading/writing ROOT files)
+- **FastJet** (for jet clustering algorithms)
+
+The Key4HEP software stack provides all the dependencies. See the Quickstart section for environment setup.
 
 ## Quickstart
 
@@ -70,7 +82,9 @@ The following processes are simulated at $\sqrt{s} = 240$ GeV using Pythia8 and 
 Unless noted otherwise, q stands for all light quark flavours (u, d, s, c). The dataset contains 5.05 million
 samples for each process.
 
-The data are available at `` (for access within SLAC) or provided upon request.
+The data are available at `/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20251114`
+(for access within SLAC S3DF) or provided upon request.
+
 
 ### Dataset generation
 
@@ -86,13 +100,71 @@ process has its own folder, and the files in the folder are named according to t
 python scripts/organize_dataset_per_process.py --base PATH_TO_DATASET
 ```
 
+### Input file format
+
+Each process is stored in its own folder, e.g., `p8_ee_ZH_6jet_ecm240`, and contains multiple ROOT files.
+Each ROOT file should contain a TTree named `events`, which has the following branches:
+* `Particle`: all MC particles in the event (format: `edm4hep::MCParticle`). Can also contain non-final-state particles
+and neutrinos; those are filtered out in the analysis.
+* `ReconstructedParticle`: reconstructed particles (format: `edm4hep::ReconstructedParticle`). These are used for jet clustering.
+* `CaloJetDurham`: calorimeter jets using the appropriate Durham algorithm (format: `edm4hep::ReconstructedParticle`).
+* `RecoMCLink` of type `podio::Link<edm4hep::ReconstructedParticle,edm4hep::MCParticle>`,
+containing links between reconstructed particles and MC particles. This is used for the ideal gen jet-reco jet matching.
+
 ### Adding your own processes
 
 To add a new process, `src/process_config.py` needs to be updated with the new process name, number of jets, as well as
 a label, color and line style for plotting.
 
+
+### Jet clustering algorithms
+
+* **Durham**  
+  Sequential recombination with distance  
+  $$
+  d_{ij} = 2\,\min(E_i^2, E_j^2)\,(1-\cos\theta_{ij}), \qquad
+  d_{iB} = E_i^2
+  $$
+  where $E_i$ is the particle energy and  $\theta_{ij}$ the opening angle.
+
+* **Anti-kt**  
+  Hadron-collider anti-kt distance measure  
+  $$
+  d_{ij} = \min(p_{T,i}^{-2}, p_{T,j}^{-2})\,\frac{\Delta R_{ij}^2}{R^2}, \qquad
+  d_{iB} = p_{T,i}^{-2}
+  $$
+
+* **Generalized $e^+ e^-$ anti-kt**  
+  Energy–angle version of anti-kt 
+  $$
+  d_{ij} = \min(E_i^{-2}, E_j^{-2})\,(1-\cos\theta_{ij}), \qquad
+  d_{iB} = E_i^{-2}
+  $$
+
+**Anti-kt energy recovery**  
+Similar to https://indico.cern.ch/event/1439509/contributions/6289574/attachments/2997180/5280612/AEConnelly_FCC.pdf,
+the jets are sorted by energy and the expected number of jets with the highest energy is selected first.
+Each extra jet gets recombined with the closest of these jets.
+
+### Jet truth definition
+Gen jets are defined by clustering all final-state MC particles (excluding neutrinos) using the same jet algorithm
+as for the reconstructed jets. For calorimeter jets, exclusive Durham clustering on MC particles is used to define
+the gen jets.
+
+### Reco-truth jet matching
+
+We use greedy matching based on the angular distance $\Delta R = \sqrt{(\Delta\phi)^2 + (\Delta\eta)^2}$.
+For each gen jet, the closest reco jet is selected, provided that $\Delta R < R_{max}$.
+
+
 ### Jet performance metrics
 
+The toolkit computes several key performance metrics:
+
+* **Jet Energy Resolution (JER)**: The resolution of reconstructed jet energy compared to truth jet energy, typically parameterized as $\sigma_E/E = A \oplus B/\sqrt{E} \oplus C/E$ or $\sigma_E/E = A \oplus C/E$.
+* **Angular Resolution**: The resolution of jet direction (η and φ) compared to truth jets.
+* **Reconstructed Higgs Mass**: The resolution of the reconstructed Higgs boson mass from jet combinations.
+* **Jet Matching Efficiency**: The fraction of events where all jets are successfully matched between reconstruction and truth.
 
 The following scripts are used to produce plots per each jet clustering method (e.g., Durham, Durham with Calo Jets, etc.)
 
@@ -131,15 +203,52 @@ python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS
 python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --AK-comparison
 python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --AK-comparison --energy-recovery
 
-
 ```
 
+### Output format
+
+The histmaker produces ROOT files containing histograms for each process. Each output directory (corresponding to a jet algorithm) contains:
+- One ROOT file per process (e.g., `p8_ee_ZH_6jet_ecm240.root`)
+- Each ROOT file contains various histograms of jet-level and event-level observables
+
+The plotting scripts generate the following folders for each jet clustering method:
+- **`plots_debug/`**: Basic diagnostic plots (optional)
+- **`plots_resolution/`**: Jet energy and angular resolution plots
+- **`plots_mass/`**: Reconstructed Higgs mass distributions
+
+In addition to this, the summary plots comparing different methods are generated in folder **`plots/`**.
+
+## Project Structure
+
+```
+FCCJetBenchmarks/
+├── src/
+│   ├── histmaker.py              # Main analysis script
+│   ├── process_config.py         # Process configuration (colors, labels, jet counts)
+│   ├── histmaker_tools/          # Analysis utilities
+│   │   ├── jets.py               # Jet clustering functions
+│   │   ├── truth_matching.py     # Gen-reco jet matching
+│   │   ├── jet_level_statistics.py
+│   │   ├── event_level_statistics.py
+│   │   └── ...
+│   └── plotting/                 # Plotting scripts
+│       ├── resolution_plots.py   # Energy/angular resolution
+│       ├── mass_plots.py         # Higgs mass reconstruction
+│       ├── joint_plots.py        # Summary matrix plots
+│       └── ...
+├── scripts/
+│   ├── create_plots.sh           # Main plotting workflow
+│   ├── generate_analysis_jobs.py # SLURM job generation
+│   ├── run_fastsim.py            # Dataset generation
+│   └── ...
+└── delphes_cards/                # Detector simulation cards
+```
 
 ## Main results
 
 
 
-## Issues
+## Issues, work in progress
 
 ### Physics-related
 * The jet energy resolution fits don't work well, especially for the calo jets. It should be a good fit in the 2-jet case.
@@ -148,10 +257,67 @@ python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --AK-compariso
 ### Code-related
 * The slow and messy plotting code needs to be cleaned up.
 * The energy resolution determination (narrowest 68% interval) is somewhat slow as it's written in Python.
+* Effective parallelization of analysis scripts - for example, running a separate job for each chunk of data.
+* At the moment, the jet clustering is done on-the-fly during the histogram making step. It would be better to
+ pre-cluster the jets and store them in the output files, so that different analysis steps can be tested more quickly.
+
+## Advanced Usage
+
+### Custom jet matching radius
+
+The default jet matching radius is 0.3. To use a different value:
+
+```bash
+fccanalysis run src/histmaker.py -- \
+  --input $PATH_TO_DATASET \
+  --output $PATH_TO_HISTOGRAMS/PF_Durham \
+  --jet-algorithm Durham \
+  --jet-matching-radius 1.0
+```
+
+### Anti-kt with energy recovery
+
+To use anti-kt algorithm with energy recovery:
+
+```bash
+fccanalysis run src/histmaker.py -- \
+  --input $PATH_TO_DATASET \
+  --output $PATH_TO_HISTOGRAMS/PF_AntiKtR06_Erecovery \
+  --jet-algorithm AK \
+  --AK-radius 0.6 \
+  --energy-recovery
+```
+
+### Processing a subset of processes
+
+To process only a specific process:
+
+```bash
+fccanalysis run src/histmaker.py -- \
+  --input $PATH_TO_DATASET \
+  --output $PATH_TO_HISTOGRAMS/PF_Durham \
+  --jet-algorithm Durham \
+  --only-dataset p8_ee_ZH_vvbb_ecm240
+```
+
+### Disabling fully-matched event filter
+
+By default, only events where all jets are matched are kept. To disable this filter:
+
+```bash
+fccanalysis run src/histmaker.py -- \
+  --input $PATH_TO_DATASET \
+  --output $PATH_TO_HISTOGRAMS/PF_Durham \
+  --jet-algorithm Durham \
+  --no-filter-fully-matched
+```
+
 
 ## References
 
 [1] FastJet software: M. Cacciari, G.P. Salam and G. Soyez, Eur.Phys.J. C72 (2012) 1896 [arXiv:1111.6097]
 
 [2] FCCAnalyses framework: https://hep-fcc.github.io/FCCAnalyses/
+
+[3] IDEA Delphes card: https://github.com/delphes/delphes/blob/master/cards/delphes_card_IDEA.tcl
 
