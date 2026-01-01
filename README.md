@@ -166,6 +166,62 @@ The toolkit computes several key performance metrics:
 * **Reconstructed Higgs Mass**: The resolution of the reconstructed Higgs boson mass from jet combinations.
 * **Jet Matching Efficiency**: The fraction of events where all jets are successfully matched between reconstruction and truth.
 
+### Jet Energy and Angular Resolution Parametrization
+
+The jet energy and angular resolutions are parameterized using functional forms that capture the energy-dependent behavior of the resolution. The resolution is computed as the narrowest 68% interval (std68) from the distribution of the relative energy difference $(E_{reco}/E_{true} - 1)$ or angular differences $(\phi_{reco} - \phi_{true})$ and $(\theta_{reco} - \theta_{true})$.
+
+#### Jet Energy Resolution (JER)
+
+The jet energy resolution is parameterized using one of two functional forms, depending on the jet type and analysis needs:
+
+**With confusion term**:
+$$
+\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus N \oplus \frac{C}{E}
+$$
+
+**Without confusion term**:
+$$
+\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus C
+$$
+
+Where:
+- **S** (stochastic/noise term): Represents the stochastic term proportional to $1/\sqrt{E}$, related to the statistical fluctuations in energy measurement
+- **N** (constant term): Represents the constant term, independent of energy, related to systematic effects (used in 3-parameter fits)
+- **C** (constant/confusion term): In 2-parameter fits, represents the constant term. In 3-parameter fits, represents the confusion term proportional to $1/E$, related to jet confusion effects (typically more significant for calorimeter jets)
+
+The parameters are fitted using `scipy.optimize.curve_fit` with appropriate bounds to ensure physical values. The fit is performed on resolution values computed in energy bins (typically 0-10, 10-20, 20-30, ..., 90-100 GeV).
+
+#### Angular Resolution
+
+The angular resolution for both $\phi$ (azimuthal angle) and $\theta$ (polar angle) is parameterized using a simpler two-parameter form:
+
+$$
+\sigma_{\phi} = \frac{S}{\sqrt{E}} \oplus C
+$$
+
+$$
+\sigma_{\theta} = \frac{S}{\sqrt{E}} \oplus C
+$$
+
+Where:
+- **S** (stochastic/noise term): Angular resolution term proportional to $1/\sqrt{E}$
+- **C** (constant term): Constant angular resolution term, independent of energy
+
+The angular resolution is typically fitted without a confusion term, as angular measurements are less affected by jet confusion compared to energy measurements.
+
+#### Resolution Computation
+
+The resolution values used for fitting are computed as follows:
+
+1. **Energy binning**: Jets are binned according to their true energy $E_{true}$ (typically in 10 GeV bins from 0-100 GeV)
+2. **Distribution construction**: For each energy bin, the distribution of $(E_{reco}/E_{true} - 1)$ or angular differences is constructed
+3. **Resolution extraction**: The narrowest 68% interval (std68) is computed from each distribution, representing the resolution at that energy
+4. **Fitting**: The resolution values across energy bins are fitted to the parameterization functions
+
+The fitted parameters are displayed in the resolution plots, showing the functional form and parameter values. Example parameter displays:
+- Two-parameter fit: "S=0.45 C=0.02" means $\sigma = 0.45/\sqrt{E} \oplus 0.02$
+- Three-parameter fit: "S=0.45 N=0.03 C=0.01" means $\sigma = 0.45/\sqrt{E} \oplus 0.03 \oplus 0.01/E$
+
 The following scripts are used to produce plots per each jet clustering method (e.g., Durham, Durham with Calo Jets, etc.)
 
 Print the basic statistics of the produced datasets:
