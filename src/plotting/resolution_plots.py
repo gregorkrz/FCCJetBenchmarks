@@ -59,10 +59,6 @@ for file in os.listdir(inputDir):
         proc_name = file.replace(".root", "")
         processList[proc_name] = {"fraction": 1}
 
-processList = {
-    "p8_ee_ZH_vvqq_ecm240": {"fraction": 1},
-}
-
 ########################################################################################################
 
 binsE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
@@ -106,7 +102,8 @@ def get_result_for_process(
     root_histogram_prefix="binned_E_reco_over_true_",
     wmin=0.7,
     wmax=1.2,
-    divide_by_MPV=True
+    divide_by_MPV=True,
+    x_label=r"$\frac{E_{reco}}{E_{true}}$",
 ):
     # Sigma methods: std68, RMS, interquantile_range
     field_names = []
@@ -359,7 +356,11 @@ def get_result_for_process(
             raise ValueError(f"Unknown sigma method: {sigma_method}")
         lo_hi_MPV.append([low, high, MPV])
         bin_mid = 0.5 * (bins[i] + bins[i + 1])
-        if (not np.isnan(bin_mid)) and (not np.isnan(std68)) and n_jets_in_bin > 50000:
+        n_jets_in_bin_min = 50000
+        if not divide_by_MPV:
+            # Plotting an angle quantity, so reduce the minimum statistics requirement
+            n_jets_in_bin_min = 10000
+        if (not np.isnan(bin_mid)) and (not np.isnan(std68)) and n_jets_in_bin > n_jets_in_bin_min:
             # More than 10k statistics for a good fit with the fine binning that we are using
             bin_mid_points.append(bin_mid)
             if divide_by_MPV:
@@ -373,16 +374,16 @@ def get_result_for_process(
         else:
             print("NaN encountered in bin mid-point calculation / not enough statistics. Number of jets in bin:", n_jets_in_bin)
     ax_hist[0].legend(fontsize=9)
-    ax_hist[0].set_xlabel(r"$E_{reco} / E_{true}$")
+    ax_hist[0].set_xlabel(x_label)
     ax_hist[0].set_ylabel("Entries")
-    ax_hist[1].set_xlabel(r"$E_{reco} / E_{true}$")
+    ax_hist[1].set_xlabel(x_label)
     ax_hist[1].set_ylabel("Entries")
     ax_hist[1].set_xlim([wmin, wmax])
     ax_hist[2].set_xlim([wmin, wmax])
-
     ax_hist[2].set_yscale("log")
-    ax_hist[2].set_xlabel(r"$E_{reco} / E_{true}$")
+    ax_hist[2].set_xlabel(x_label)
     ax_hist[2].set_ylabel("Entries")
+    fig_hist.tight_layout()
     return (
         bin_mid_points,
         sigmaEoverE,
@@ -397,6 +398,8 @@ def get_result_for_process(
 bin_to_histograms_storage = {}
 bin_to_histograms_storage_neutral = {}
 method_low_high_mid_point_storage = {}
+fit_storage_Theta = {}
+fit_storage_Phi = {}
 
 
 def get_func_fit(mid_points, Rs, confusion_term=True, min_E=0.0):
@@ -405,28 +408,33 @@ def get_func_fit(mid_points, Rs, confusion_term=True, min_E=0.0):
     mid_points = np.array(mid_points)[mask]
     Rs = np.array(Rs)[mask]
     if confusion_term:
-
         def resolution_func(E, a, b, c):
             return np.sqrt((a / np.sqrt(E)) ** 2 + b**2 + (c / E) ** 2)
-
-        popt, pcov = curve_fit(
-            resolution_func, mid_points, Rs, p0=[0.5, 0.03, 0.1], maxfev=10000
-        )
+        if len(mid_points) < 3:
+            popt, pcov = [0.5, 0.03, 0.1], np.zeros((3, 3))
+            print("Not enough points to fit with confusion term; using default parameters.")
+        else:
+            popt, pcov = curve_fit(
+                resolution_func, mid_points, Rs, p0=[0.5, 0.03, 0.1], maxfev=10000
+            )
         # return a smooth function throughout mid_points
     else:
-
         def resolution_func(E, a, b):
             return np.sqrt((a / np.sqrt(E)) ** 2 + b**2)
-
-        popt, pcov = curve_fit(
-            resolution_func, mid_points, Rs, p0=[0.5, 0.03], maxfev=10000
-        )
+        if len(mid_points) < 2:
+            popt, pcov = [0.5, 0.03], np.zeros((2, 2))
+            print("Not enough points to fit without confusion term; using default parameters.")
+        else:
+            popt, pcov = curve_fit(
+                resolution_func, mid_points, Rs, p0=[0.5, 0.03], maxfev=10000
+            )
         # return a smooth function throughout mid_points
+    if len(mid_points) == 0:
+        return np.array([]), np.array([]), popt, pcov
     xs = np.linspace(min(mid_points), max(mid_points), 100)
     ys = resolution_func(xs, *popt)
     popt = np.abs(popt)
     return xs, ys, popt, pcov
-
 
 process_popt_storage = (
     {}
@@ -468,8 +476,9 @@ for jet_part in jet_parts_to_process:
                 2, 1, figsize=(10, 6), gridspec_kw={"height_ratios": [2, 1]}
             )
         for proc_idx, process in enumerate(sorted(list(processList.keys()))):
+            print("Process:", process)
             if jet_part == "_all":
-                (E_theta, sigma_theta, fig_theta_hist, response_theta, _, _, _) = get_result_for_process(
+                (E_theta, sigma_theta, fig_theta_hist, response_theta, _, results_theta, _) = get_result_for_process(
                     process,
                     sigma_method=method,
                     root_histogram_prefix="binned_deltaTheta_",
@@ -480,19 +489,38 @@ for jet_part in jet_parts_to_process:
                 xs_theta, ys_theta, popt_theta, pcov_theta = get_func_fit(
                     E_theta, sigma_theta, confusion_term=False
                 )
-                (E_phi, sigma_phi, fig_phi_hist, response_phi, _, _, _) = get_result_for_process(
+                fit_storage_Theta[process] = (
+                    popt_theta,
+                    pcov_theta,
+                    xs_theta,
+                    ys_theta,
+                    E_theta,
+                    sigma_theta,
+                    results_theta,
+                )
+                (E_phi, sigma_phi, fig_phi_hist, response_phi, _, results_phi, _) = get_result_for_process(
                     process,
                     sigma_method=method,
                     root_histogram_prefix="binned_deltaPhi_",
                     wmin=-0.05,
                     wmax=0.05,
-                    divide_by_MPV=False
+                    divide_by_MPV=False,
+                    x_label="$\Delta \phi = \phi_{reco} - \phi_{true}$ [rad]"
                 )
                 fig_theta_hist.savefig(os.path.join(outputDir, "bins_theta_{}.pdf".format(process)))
                 fig_phi_hist.savefig(os.path.join(outputDir, "bins_phi_{}.pdf".format(process)))
                 clr = PROCESS_COLORS.get(process, f"C{proc_idx}")
                 xs_phi, ys_phi, popt_phi, pcov_phi = get_func_fit(
                     E_phi, sigma_phi, confusion_term=False
+                )
+                fit_storage_Phi[process] = (
+                    popt_phi,
+                    pcov_phi,
+                    xs_phi,
+                    ys_phi,
+                    E_phi,
+                    sigma_phi,
+                    results_phi,
                 )
                 ax_theta[0].plot(E_theta, sigma_theta, "x", color=clr)
                 ax_theta[0].plot(
@@ -698,6 +726,18 @@ for jet_part in jet_parts_to_process:
                 "jet_energy_resolution_per_process_comparison_Njets{}.pdf".format(jet_part),
             )
         )
+
+# Save the theta and phi low_high_mid_point_storage to a pickle file and exit
+pickle.dump(
+    {
+        "theta": fit_storage_Theta,
+        "phi": fit_storage_Phi,
+    },
+    open(
+        os.path.join(outputDir, "angle_fit_params_per_process.pkl"),
+        "wb",
+    ),
+)
 
 if not args.angles_only:
     pickle.dump(
