@@ -8,6 +8,16 @@ import os
 from src.process_config import PROCESS_COLORS, HUMAN_READABLE_PROCESS_NAMES, LINE_STYLES
 import pickle
 import matplotlib
+try:
+    from numba import njit
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+    # Create a no-op decorator if numba is not available
+    def njit(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
 
 matplotlib.rcParams.update(
     {
@@ -40,6 +50,34 @@ def print_params(popt):
     return f"A={round(popt[0], 2)} B={round(popt[2], 2)} C={round(popt[1], 2)}"
 
 
+@njit(cache=True)
+def find_narrowest_interval(centers, cumulative_weights, percentage, epsilon, wmin, wmax):
+    """
+    Find the narrowest interval containing the specified percentage of the distribution.
+    Returns: (width, low, high) or (100.0, wmin, wmax) if no valid interval found.
+    
+    Matches original behavior: wy = points[j][1] - points[i][1]
+    where cumulative_weights[i] is the cumulative weight up to centers[i].
+    """
+    n = len(centers)
+    best_width = 100.0
+    best_low = wmin
+    best_high = wmax
+    
+    for i in range(n):
+        for j in range(i, n):
+            # Match original: wy = points[j][1] - points[i][1]
+            wy = cumulative_weights[j] - cumulative_weights[i]
+            if abs(wy - percentage) < epsilon:
+                wx = centers[j] - centers[i]
+                if wx < best_width:
+                    best_width = wx
+                    best_low = centers[i]
+                    best_high = centers[j]
+    
+    return best_width, best_low, best_high
+
+
 def point_format(number):
     return str(number).replace(".", "p")
 
@@ -50,7 +88,6 @@ def neg_format(number):
         return point_format("n{}".format(abs(number)))
     else:
         return point_format(number)
-
 
 processList = {}
 
@@ -121,59 +158,78 @@ def get_result_for_process(
         theHist, bin_edges, percentage=0.683, epsilon=eps, wmin=0.7, wmax=1.2
     ):
         # theHist, bin_edges = np.histogram(data_for_hist, bins=bins, density=True)
+        theHist = theHist.copy()  # Avoid modifying the original
         if wmin > 0:
             theHist[0] = 0.0  # for the energy histograms
-        s = np.sum(theHist * np.diff(bin_edges))
+        
+        # Normalize the histogram
+        bin_widths = np.diff(bin_edges)
+        s = np.sum(theHist * bin_widths)
         if s != 0:
-            theHist /= s  # normalize the histogram to 1
-        weight = 0.0
-        #print("Bin edges:", bin_edges[:10], bin_edges[-10:], "len", len(bin_edges))
-        #print("Histogram:", theHist[:10], theHist[-10:],"max",  max(theHist), "len", len(theHist))
-        points = []
-        sums = []
+            theHist = theHist / s  # normalize the histogram to 1
+        
+        # Find MPV
         am = np.argmax(theHist)
         MPV = 0.5 * (bin_edges[am] + bin_edges[am + 1])
-        # Fill list of bin centers and the integral up to those point
+        
+        # Compute bin centers and cumulative weights using vectorized operations
+        # Calculate cumulative weights for ALL bins first
+        weights = theHist * bin_widths
+        cumulative_weights_all = np.cumsum(weights)
+        
+        # Build lists of valid points (within [wmin, wmax]) with their cumulative weights
+        # This matches the original logic: accumulate weights for all bins, but only
+        # include points in the list if they're within the range
+        valid_centers = []
+        valid_cumulative = []
         for i in range(len(bin_edges) - 1):
-            weight += theHist[i] * (bin_edges[i + 1] - bin_edges[i])
-            sums.append(weight)
             if bin_edges[i + 1] < wmin or bin_edges[i] > wmax:
                 continue
-            points.append([(bin_edges[i + 1] + bin_edges[i]) / 2, weight])
-        low = wmin
-        high = wmax
-        width = 100
-        for i in range(len(points)):
-            for j in range(i, len(points)):
-                wy = points[j][1] - points[i][1]
-                if abs(wy - percentage) < epsilon:
-                    wx = points[j][0] - points[i][0]
-                    if wx < width:
-                        low = points[i][0]
-                        high = points[j][0]
-                        width = wx
+            center = 0.5 * (bin_edges[i + 1] + bin_edges[i])
+            valid_centers.append(center)
+            valid_cumulative.append(cumulative_weights_all[i])
+        
+        if len(valid_centers) == 0:
+            # Fallback to mean and stdev
+            print("Fitting didn't work - no valid points in range")
+            centers_all = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+            mean = np.sum(centers_all * weights)
+            std68 = np.sqrt(np.sum((centers_all - mean) ** 2 * weights))
+            print("mean:", mean, "68% int.:", std68)
+            return std68, mean - std68, mean + std68, MPV
+        
+        # Convert to numpy arrays for numba
+        valid_centers = np.array(valid_centers)
+        valid_cumulative = np.array(valid_cumulative)
+        
+        # Use numba-optimized function to find narrowest interval
+        if NUMBA_AVAILABLE:
+            width, low, high = find_narrowest_interval(
+                valid_centers, valid_cumulative, percentage, epsilon, wmin, wmax
+            )
+        else:
+            # Fallback to original algorithm if numba not available
+            width = 100.0
+            low = wmin
+            high = wmax
+            for i in range(len(valid_centers)):
+                for j in range(i, len(valid_centers)):
+                    # Match original: wy = points[j][1] - points[i][1]
+                    wy = valid_cumulative[j] - valid_cumulative[i]
+                    if abs(wy - percentage) < epsilon:
+                        wx = valid_centers[j] - valid_centers[i]
+                        if wx < width:
+                            low = valid_centers[i]
+                            high = valid_centers[j]
+                            width = wx
+        
         if low == wmin and high == wmax:
             # Didn't fit well, try mean and stdev
-            # Compute the stdev from the histogram
+            # Compute the stdev from the histogram using vectorized operations
             print("Fitting didn't work")
-            mean = np.sum(
-                [
-                    (0.5 * (bin_edges[i] + bin_edges[i + 1]))
-                    * theHist[i]
-                    * (bin_edges[i + 1] - bin_edges[i])
-                    for i in range(len(theHist))
-                ]
-            )
-            std68 = np.sqrt(
-                np.sum(
-                    [
-                        ((0.5 * (bin_edges[i] + bin_edges[i + 1])) - mean) ** 2
-                        * theHist[i]
-                        * (bin_edges[i + 1] - bin_edges[i])
-                        for i in range(len(theHist))
-                    ]
-                )
-            )
+            centers_all = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+            mean = np.sum(centers_all * weights)
+            std68 = np.sqrt(np.sum((centers_all - mean) ** 2 * weights))
             print("mean:", mean, "68% int.:", std68)
             return std68, mean - std68, mean + std68, MPV
         return 0.5 * (high - low), low, high, MPV
@@ -359,7 +415,7 @@ def get_result_for_process(
         n_jets_in_bin_min = 50000
         if not divide_by_MPV:
             # Plotting an angle quantity, so reduce the minimum statistics requirement
-            n_jets_in_bin_min = 10000
+            n_jets_in_bin_min = 50000
         if (not np.isnan(bin_mid)) and (not np.isnan(std68)) and n_jets_in_bin > n_jets_in_bin_min:
             # More than 10k statistics for a good fit with the fine binning that we are using
             bin_mid_points.append(bin_mid)

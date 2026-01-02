@@ -305,7 +305,7 @@ for method in methods_filtered:
 
         # Phi resolution plots
         _, _, _, _, x_pts, y_pts, _ = f_angular["phi"][process]
-        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=False)
+        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=True)
         ax_ang_phi[row, col].plot(
             xs,
             ys,
@@ -319,7 +319,7 @@ for method in methods_filtered:
         ax_ang_phi[row, col].set_title(label)
         # Theta resolution plots
         _, _, _, _, x_pts, y_pts, _ = f_angular["theta"][process]
-        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=False)
+        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=True)
         ax_ang_theta[row, col].plot(
             xs,
             ys,
@@ -748,7 +748,7 @@ for method in [
         # Phi resolution plots for PF vs CaloJets comparison
         if "phi" in f_angular and process in f_angular["phi"]:
             _, _, _, _, x_pts_phi, y_pts_phi, _ = f_angular["phi"][process]
-            xs_phi, ys_phi, fit_params_phi, fit_cov_phi = get_func_fit(x_pts_phi, y_pts_phi, confusion_term=False)
+            xs_phi, ys_phi, fit_params_phi, fit_cov_phi = get_func_fit(x_pts_phi, y_pts_phi, confusion_term=True)
             ax_ang_phi_pf_calo[row, col].plot(
                 xs_phi,
                 ys_phi,
@@ -764,7 +764,7 @@ for method in [
         # Theta resolution plots for PF vs CaloJets comparison
         if "theta" in f_angular and process in f_angular["theta"]:
             _, _, _, _, x_pts_theta, y_pts_theta, _ = f_angular["theta"][process]
-            xs_theta, ys_theta, fit_params_theta, fit_cov_theta = get_func_fit(x_pts_theta, y_pts_theta, confusion_term=False)
+            xs_theta, ys_theta, fit_params_theta, fit_cov_theta = get_func_fit(x_pts_theta, y_pts_theta, confusion_term=True)
             ax_ang_theta_pf_calo[row, col].plot(
                 xs_theta,
                 ys_theta,
@@ -917,8 +917,7 @@ for i in range(len(ax_ang_phi_pf_calo)):
     for j in range(len(ax_ang_phi_pf_calo[i])):
         ax_ang_phi_pf_calo[i, j].legend(fontsize=6.5)
         ax_ang_phi_pf_calo[i, j].grid()
-        ax_ang_phi_pf_calo[i, j].set_ylim(0, 0.045)
-       
+        ax_ang_phi_pf_calo[i, j].set_ylim(0, 0.06)
 for i in range(len(ax_ang_theta_pf_calo)):
     for j in range(len(ax_ang_theta_pf_calo[i])):
         ax_ang_theta_pf_calo[i, j].legend(fontsize=6.5)
