@@ -11,11 +11,20 @@ The framework enables systematic evaluation of jet energy resolution, angular re
 
 This project requires:
 - **FCCAnalyses framework** (via Key4HEP software stack)
-- **Python 3.x** with packages: `numpy`, `matplotlib`, `scipy`
+- **Python 3.x** with packages: `numpy`, `matplotlib`, `scipy` (optional: `numba`)
 - **ROOT** (for reading/writing ROOT files)
-- **FastJet** (for jet clustering algorithms)
+- **FastJet** [1] (for jet clustering algorithms) 
 
-The Key4HEP software stack provides all the dependencies. See the Quickstart section for environment setup.
+
+The Key4HEP software stack provides all the dependencies except `numba`.
+
+See the Quickstart section for the environment setup.
+
+Numba may be installed locally with the following command:
+
+```bash
+pip install numba -t .
+```
 
 ## Quickstart
 
@@ -24,29 +33,19 @@ The framework is packaged inside the Key4HEP software stack:
 ```bash
 source /cvmfs/sw.hsf.org/key4hep/setup.sh -r 2025-05-29
 ```
+
 1. **Run the histmaker:**
+Submit the slurm jobs for each process and each method using the following command:
+`python scripts/generate_analysis_jobs.py`.
+
+The script needs to be modified such that the dataset and output paths are correct.
+
+The histmaker scripts produce a ROOT file with histograms for each process and each jet algorithm.
+
+To see all the options of the histmaker command, simply run the command without any arguments:
 ```bash
-fccanalysis run src/histmaker.py -- \
-  --input $PATH_TO_DATASET \
-  --output $PATH_TO_HISTOGRAMS/PF_Durham  \
-  --jet-algorithm Durham
-  
-fccanalysis run src/histmaker.py -- \
---input $PATH_TO_DATASET \
---output $PATH_TO_HISTOGRAMS/CaloJets_Durham  \
---jet-algorithm CaloJetDurham
-
-fccanalysis run src/histmaker.py -- \
---input $PATH_TO_DATASET \
---output $PATH_TO_HISTOGRAMS/PF_Durham_IdealMatching  \
---jet-algorithm Durham --ideal-matching
+fccanalysis run src/histmaker.py
 ```
-Alternatively, you can run the histmaker by modifying the provided SLURM script submission job:
-`python scripts/generate_analysis_jobs.py`
-. The script needs to be modified such that the dataset and output paths are correct.
-
-The histmaker produces a ROOT file with histograms for each process and each jet algorithm.
-
 
 2. **Run the plotting scripts:**
 
@@ -119,23 +118,27 @@ a label, color and line style for plotting.
 
 ### Jet clustering algorithms
 
-* **Durham**  
+The supported jet clustering algorithms are implemented using FastJet [1]:
+
+* **Durham** [1]
   Sequential recombination with distance  
   $$
   d_{ij} = 2\,\min(E_i^2, E_j^2)\,(1-\cos\theta_{ij}), \qquad
   d_{iB} = E_i^2
   $$
-  where $E_i$ is the particle energy and  $\theta_{ij}$ the opening angle.
+  where $E_i$ is the particle energy and  $\theta_{ij}$ the opening angle. Durham is used in 
+exclusive mode, i.e. it stops after finding the desired number of jets.
 
-* **Anti-kt**  
+* **Anti-kt** [5]  
   Hadron-collider anti-kt distance measure  
   $$
   d_{ij} = \min(p_{T,i}^{-2}, p_{T,j}^{-2})\,\frac{\Delta R_{ij}^2}{R^2}, \qquad
   d_{iB} = p_{T,i}^{-2}
   $$
 
-* **Generalized $e^+ e^-$ anti-kt**  
-  Energy–angle version of anti-kt 
+* **Generalized $e^+ e^-$ anti-kt** as defined in [1] section 4.5
+
+  Energy–angle version of anti-kt more suitable for $e^+e^-$ collisions:
   $$
   d_{ij} = \min(E_i^{-2}, E_j^{-2})\,(1-\cos\theta_{ij}), \qquad
   d_{iB} = E_i^{-2}
@@ -150,6 +153,8 @@ Each extra jet gets recombined with the closest of these jets.
 Gen jets are defined by clustering all final-state MC particles (excluding neutrinos) using the same jet algorithm
 as for the reconstructed jets. For calorimeter jets, exclusive Durham clustering on MC particles is used to define
 the gen jets.
+
+To determine into which jets the Higgs decays into, we match the gen jets to the Higgs (or $W^{+/-}$) decay products.
 
 ### Reco-truth jet matching
 
@@ -181,46 +186,37 @@ $$
 
 **Without confusion term**:
 $$
-\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus C
+\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus N
 $$
 
 Where:
-- **S** (stochastic/noise term): Represents the stochastic term proportional to $1/\sqrt{E}$, related to the statistical fluctuations in energy measurement
+- **S** (stochastic term): Represents the stochastic term proportional to $1/\sqrt{E}$, related to the statistical fluctuations in energy measurement
 - **N** (constant term): Represents the constant term, independent of energy, related to systematic effects (used in 3-parameter fits)
-- **C** (constant/confusion term): In 2-parameter fits, represents the constant term. In 3-parameter fits, represents the confusion term proportional to $1/E$, related to jet confusion effects (typically more significant for calorimeter jets)
+- **C** (confusion term): Represents the confusion term proportional to $1/E$, related to jet confusion effects
 
 The parameters are fitted using `scipy.optimize.curve_fit` with appropriate bounds to ensure physical values. The fit is performed on resolution values computed in energy bins (typically 0-10, 10-20, 20-30, ..., 90-100 GeV).
 
+We use the three-parameter form for jet energy resolution.
+
 #### Angular Resolution
 
-The angular resolution for both $\phi$ (azimuthal angle) and $\theta$ (polar angle) is parameterized using a simpler two-parameter form:
-
-$$
-\sigma_{\phi} = \frac{S}{\sqrt{E}} \oplus C
-$$
-
-$$
-\sigma_{\theta} = \frac{S}{\sqrt{E}} \oplus C
-$$
-
-Where:
-- **S** (stochastic/noise term): Angular resolution term proportional to $1/\sqrt{E}$
-- **C** (constant term): Constant angular resolution term, independent of energy
-
-The angular resolution is typically fitted without a confusion term, as angular measurements are less affected by jet confusion compared to energy measurements.
+The angular resolution for $\phi$ (azimuthal angle), $\theta$ (polar angle), and $\eta$ (pseudorapidity)
+are parameterized similarly to jet energy resolution; using the simpler two-parameter form (without the confusion term).
 
 #### Resolution Computation
 
 The resolution values used for fitting are computed as follows:
 
 1. **Energy binning**: Jets are binned according to their true energy $E_{true}$ (typically in 10 GeV bins from 0-100 GeV)
-2. **Distribution construction**: For each energy bin, the distribution of $(E_{reco}/E_{true} - 1)$ or angular differences is constructed
+2. **Distribution construction**: For each energy bin, the distribution of $E_{reco}/E_{true}$ or angular differences is constructed
 3. **Resolution extraction**: The narrowest 68% interval (std68) is computed from each distribution, representing the resolution at that energy
 4. **Fitting**: The resolution values across energy bins are fitted to the parameterization functions
 
 The fitted parameters are displayed in the resolution plots, showing the functional form and parameter values. Example parameter displays:
 - Two-parameter fit: "S=0.45 C=0.02" means $\sigma = 0.45/\sqrt{E} \oplus 0.02$
 - Three-parameter fit: "S=0.45 N=0.03 C=0.01" means $\sigma = 0.45/\sqrt{E} \oplus 0.03 \oplus 0.01/E$
+
+### Plotting scripts
 
 The following scripts are used to produce plots per each jet clustering method (e.g., Durham, Durham with Calo Jets, etc.)
 
@@ -300,9 +296,24 @@ FCCJetBenchmarks/
 └── delphes_cards/                # Detector simulation cards
 ```
 
+## Important plots
+
+Individual:
+`plots_resolution/jet_energy_resolution_per_process_comparison_Njets_all.pdf`: Jet energy resolution (and response) for 2, 4, 6 jets
+(similarly, `plots_resolution/jet_energy_resolution_per_process_comparison_Njets_neutral.pdf`, _charged, and _photon )
+`plots_resolution/JER_vs_CosTheta_resolution_std68.pdf`: Jet energy resolution vs cos theta. The event selection might be too biased and we are seeing a worse resolution for cos theta close to pi/2.
+`plots_mass/Higgs_mass_plots_sorted_per_N_jets.pdf`: Higgs mass plot, for 2, 4 and 6 jet events
+plots_mass/Higgs_mass_plots_sorted_per_process_type.pdf: Higgs mass plot for different events, with 2, 4, and 6 jets plotted on the same canvas
+plots_mass/Higgs_mass_reco_overlaid_mH_reco_normalized.pdf: Higgs mass peak for all the processes in one plot
+plots_mass/log_Higgs_mass_reco_vs_gen.pdf: 
+
+Joint:
+
+
+
 ## Main results
 
-
+See [RESULTS.md](RESULTS.md) for the main results obtained with this framework and the provided dataset.
 
 ## Issues, work in progress
 
@@ -358,7 +369,7 @@ fccanalysis run src/histmaker.py -- \
 
 ### Disabling fully-matched event filter
 
-By default, only events where all jets are matched are kept. To disable this filter:
+By default, we consider an idealized scenario in which only events where all jets are matched are kept. To disable this filter:
 
 ```bash
 fccanalysis run src/histmaker.py -- \
@@ -377,3 +388,6 @@ fccanalysis run src/histmaker.py -- \
 
 [3] IDEA Delphes card: https://github.com/delphes/delphes/blob/master/cards/delphes_card_IDEA.tcl
 
+[4] Bierlich, C., Chakraborty, S., Desai, N., Gellersen, L., Helenius, I., Ilten, P., Lönnblad, L., Mrenna, S., Prestel, S., Preuss, C. T., Sjöstrand, T., Skands, P., Utheim, M., & Verheyen, R. (2022). A comprehensive guide to the physics and usage of PYTHIA 8.3. ArXiv. https://arxiv.org/abs/2203.11601
+
+[5] Cacciari, Matteo, et al. “The Anti-K_t Jet Clustering Algorithm.” arXiv:0802.1189, arXiv, 21 Apr. 2008. arXiv.org, https://doi.org/10.48550/arXiv.0802.1189.
