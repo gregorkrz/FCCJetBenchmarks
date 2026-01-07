@@ -19,6 +19,7 @@ parser.add_argument(
     action="store_true",
     help="If set, process all folders found in the input directory",
 )
+parser.add_argument("--important-only", action="store_true", help="Only add important columns to the table")
 
 args = parser.parse_args()
 
@@ -30,6 +31,21 @@ folders = [
     "PF_Durham_IdealMatching",
 ]
 folder_readable_names = ["PF Jets", "Calo Jets", "PF Jets, Ideal Matching"]
+
+if args.important_only:
+    folders = [
+        "PF_Durham",
+        "CaloJets_Durham",
+        "PF_E_recovery_AntiKtR06",
+        "PF_E_recovery_AntiKtR08",
+        "PF_E_recovery_AntiKtR10",
+        "PF_E_recovery_AntiKtR12",
+        "PF_AntiKtR06",
+        "PF_AntiKtR08",
+        "PF_AntiKtR10",
+        "PF_AntiKtR12"
+    ]
+    folder_readable_names = ["PF Jets", "Calo Jets", "AK06-ER", "AK08-ER", "AK10-ER", "AK12-ER", "AK06", "AK08", "AK10", "AK12"]
 
 if args.all_folders:
     # Process all folders in the input directory (except the ones that start with 'plots')
@@ -71,50 +87,67 @@ for idx, folder_name in enumerate(folders):
         results[procname][folder_readable_names[idx]] = pass_rate
 
 print(results)
-
-
-def print_table(data, folder_names, output_filename=None):
-    # Build the column headers dynamically from the provided folder names
+def print_table_markdown(data, folder_names, output_filename=None, sort_processes=True):
+    """
+    Print a GitHub-flavored Markdown table.
+    The best (maximum) value per process row is bolded.
+    """
     columns = ["Process"] + folder_names
 
-    # Build rows
-    rows = []
-    for process, metrics in data.items():
-        row = [process]
+    processes = sorted(data.keys()) if sort_processes else list(data.keys())
+
+    def escape_md(text: str) -> str:
+        # Escape pipes so they don't create extra columns
+        return str(text).replace("|", r"\|")
+
+    def fmt_cell(value, is_best=False):
+        if isinstance(value, (int, float)):
+            formatted = f"{value:.3f}"
+            return f"**{formatted}**" if is_best else formatted
+        return ""
+
+    lines = []
+
+    # Header
+    lines.append("| " + " | ".join(escape_md(c) for c in columns) + " |")
+    lines.append("| " + " | ".join(["---"] * len(columns)) + " |")
+
+    # Rows
+    for process in processes:
+        metrics = data.get(process, {})
+
+        # Collect numeric values only
+        numeric_values = [
+            v for v in metrics.values() if isinstance(v, (int, float))
+        ]
+        best_value = max(numeric_values) if numeric_values else None
+
+        row = [escape_md(process)]
         for folder in folder_names:
             value = metrics.get(folder, "")
-            row.append(round(value, 3) if isinstance(value, (int, float)) else "")
-        rows.append(row)
+            is_best = (
+                isinstance(value, (int, float))
+                and best_value is not None
+                and abs(value - best_value) < 1e-12
+            )
+            row.append(fmt_cell(value, is_best))
 
-    # Determine column widths
-    col_widths = []
-    for i, col in enumerate(columns):
-        max_width = len(col)
-        for row in rows:
-            max_width = max(max_width, len(f"{row[i]}"))
-        col_widths.append(max_width)
+        lines.append("| " + " | ".join(row) + " |")
 
-    # Format a row
-    def format_row(row):
-        return " | ".join(f"{str(val):<{col_widths[i]}}" for i, val in enumerate(row))
-
-    # Print header
-    output = ""
-    output += format_row(columns) + "\n"
-    output += "-+-".join("-" * w for w in col_widths) + "\n"
-
-    # Print rows
-    for row in rows:
-        output += format_row(row) + "\n"
+    output = "\n".join(lines) + "\n"
     print(output)
+
     if output_filename:
-        # write output to file
         with open(output_filename, "w") as f:
             f.write(output)
 
+filename = "filter_pass_rate_table.md"
+if args.important_only:
+    filename = "filter_pass_rate_table_clean.md"
 
-print_table(
+print_table_markdown(
     results,
     folder_readable_names,
-    output_filename=os.path.join(base_dir, "filter_pass_rate_table.txt"),
+    output_filename=os.path.join(base_dir, filename),
 )
+
