@@ -79,8 +79,9 @@ for folder in os.listdir(inputDir):
     processList[procname] = {"fraction": frac}
     if procname not in NUMBER_OF_HIGGS_JETS or procname not in NUMBER_OF_JETS:
         raise Exception(f"Process {procname} not known")
+
 print("ProcList:", processList)
-bins_jetE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+bins_jetE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
 bins_eta = [-5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 5]
 bins_costheta = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]
 

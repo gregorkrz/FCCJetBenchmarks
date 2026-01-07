@@ -33,7 +33,7 @@ if args.AK_comparison:
         outputDir = os.path.join(outputDir, "comparison_AK")
 os.makedirs(outputDir, exist_ok=True)
 
-bins_E = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+bins_E = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
 
 
 def annotate_matrix_plot_with_arrows(fig):
@@ -158,6 +158,7 @@ fig, ax = plt.subplots(5, 3, figsize=(10, 11))
 # Angular resolution plots
 fig_ang_phi, ax_ang_phi = plt.subplots(5, 3, figsize=(10, 11))
 fig_ang_theta, ax_ang_theta = plt.subplots(5, 3, figsize=(10, 11))
+fig_ang_eta, ax_ang_eta = plt.subplots(5, 3, figsize=(10, 11))
 
 fig_mH, ax_mH = plt.subplots(2, 3, figsize=(9, 7))
 fig_mH_per_process, ax_mH_per_process = plt.subplots(5, 3, figsize=(10, 11))
@@ -305,7 +306,7 @@ for method in methods_filtered:
 
         # Phi resolution plots
         _, _, _, _, x_pts, y_pts, _ = f_angular["phi"][process]
-        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=True)
+        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=False)
         ax_ang_phi[row, col].plot(
             xs,
             ys,
@@ -319,7 +320,7 @@ for method in methods_filtered:
         ax_ang_phi[row, col].set_title(label)
         # Theta resolution plots
         _, _, _, _, x_pts, y_pts, _ = f_angular["theta"][process]
-        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=True)
+        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=False)
         ax_ang_theta[row, col].plot(
             xs,
             ys,
@@ -331,6 +332,20 @@ for method in methods_filtered:
         ax_ang_theta[row, col].set_ylabel("$\sigma_{\\theta}$ [rad]")
         ax_ang_theta[row, col].set_xlabel("$E_{true}$ [GeV]")
         ax_ang_theta[row, col].set_title(label)
+        # Eta resolution plots
+        _, _, _, _, x_pts, y_pts, _ = f_angular["eta"][process]
+        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=False)
+        ax_ang_eta[row, col].plot(
+            xs,
+            ys,
+            label=f"{method_dict[method]} {print_params(fit_params)}",
+            color=method_color[method],
+            linestyle=linestyle,
+        )
+        ax_ang_eta[row, col].plot(x_pts, y_pts, "x", color=method_color[method], markersize=4)
+        ax_ang_eta[row, col].set_ylabel("$\sigma_{\eta}$")
+        ax_ang_eta[row, col].set_xlabel("$E_{true}$ [GeV]")
+        ax_ang_eta[row, col].set_title(label)
         Higgs_x, Higgs_y = f_mH[process]["x_vals_reco"], f_mH[process]["y_vals_reco"]
         Higgs_bin_width = Higgs_x[1] - Higgs_x[0] if len(Higgs_x) > 1 else 1.0
         Higgs_edges = np.concatenate(
@@ -504,6 +519,13 @@ for i in range(len(ax_ang_theta)):
         ax_ang_theta[i, j].legend(fontsize=6.5)
         ax_ang_theta[i, j].grid()
 
+for i in range(len(ax_ang_eta)):
+    for j in range(len(ax_ang_eta[i])):
+        ax_ang_eta[i, j].legend(fontsize=6.5)
+        ax_ang_eta[i, j].grid()
+        # set ylim to 0 to 0.022
+        ax_ang_eta[i, j].set_ylim(0, 0.022)
+
 for i in range(len(ax_E_mH_gluons)):
     for j in range(len(ax_E_mH_gluons[i])):
         ax_E_mH_gluons[i, j].legend(fontsize=7)
@@ -540,28 +562,24 @@ annotate_matrix_plot_with_arrows(fig)
 fig.tight_layout()
 fig_mH_path_per_process = os.path.join(outputDir, f"Higgs_mass_per_process.pdf")
 
-if args.AK_comparison:
-    fig_path = os.path.join(outputDir, f"Jet_Energy_Resolution.pdf")
-    fig_mH_path = os.path.join(outputDir, f"Higgs_mass.pdf")
-    fig_path_angular_phi = os.path.join(outputDir, f"Jet_Angular_Resolution_phi.pdf")
-    fig_path_angular_theta = os.path.join(outputDir, f"Jet_Angular_Resolution_theta.pdf")
-    fig_mH_twojets_path = os.path.join(outputDir, f"Higgs_mass_2jets.pdf")
-else:
-    fig_path = os.path.join(outputDir, f"JER_comparison_PF_and_ideal_matching.pdf")
-    fig_path_angular_phi = os.path.join(outputDir, f"Angular_Resolution_phi_comparison_PF_and_ideal_matching.pdf")
-    fig_path_angular_theta = os.path.join(outputDir, f"Angular_Resolution_theta_comparison_PF_and_ideal_matching.pdf")
-    fig_mH_path = os.path.join(
-        outputDir, f"Higgs_mass_comparison_PF_and_ideal_matching.pdf"
-    )
-    fig_mH_twojets_path = os.path.join(
-        outputDir, f"Higgs_mass_comparison_PF_and_ideal_matching_2jets.pdf"
-    )
+
+fig_path = os.path.join(outputDir, f"Jet_Energy_Resolution.pdf")
+fig_mH_path = os.path.join(outputDir, f"Higgs_mass.pdf")
+fig_path_angular_phi = os.path.join(outputDir, f"Jet_Angular_Resolution_phi.pdf")
+fig_path_angular_theta = os.path.join(outputDir, f"Jet_Angular_Resolution_theta.pdf")
+fig_path_angular_eta = os.path.join(outputDir, f"Jet_Angular_Resolution_eta.pdf")
+fig_mH_twojets_path = os.path.join(outputDir, f"Higgs_mass_2jets.pdf")
 
 fig_mH.tight_layout()
 fig_mH_twojets.tight_layout()
 fig_mH_per_process.tight_layout()
+annotate_matrix_plot_with_arrows(fig_mH_per_process)
 fig_ang_phi.tight_layout()
+annotate_matrix_plot_with_arrows(fig_ang_phi)
 fig_ang_theta.tight_layout()
+annotate_matrix_plot_with_arrows(fig_ang_theta)
+fig_ang_eta.tight_layout()
+annotate_matrix_plot_with_arrows(fig_ang_eta)
 
 print("Saving figure to", fig_mH_path)
 print("Saving figure to", fig_mH_twojets_path)
@@ -569,10 +587,12 @@ print("Saving figure to", fig_path)
 print("Saving figure to", fig_mH_path_per_process)
 print("Saving figure to", fig_path_angular_phi)
 print("Saving figure to", fig_path_angular_theta)
+print("Saving figure to", fig_path_angular_eta)
 
 fig.savefig(fig_path)
 fig_ang_phi.savefig(fig_path_angular_phi)
 fig_ang_theta.savefig(fig_path_angular_theta)
+fig_ang_eta.savefig(fig_path_angular_eta)
 fig_mH.savefig(fig_mH_path)
 fig_mH_twojets.savefig(fig_mH_twojets_path)
 fig_mH_per_process.savefig(fig_mH_path_per_process)
@@ -589,6 +609,7 @@ fig_mH, ax_mH = plt.subplots(2, 2, figsize=(8, 6))
 # Angular resolution plots for PF vs CaloJets comparison
 fig_ang_phi_pf_calo, ax_ang_phi_pf_calo = plt.subplots(5, 3, figsize=(10, 11))
 fig_ang_theta_pf_calo, ax_ang_theta_pf_calo = plt.subplots(5, 3, figsize=(10, 11))
+fig_ang_eta_pf_calo, ax_ang_eta_pf_calo = plt.subplots(5, 3, figsize=(10, 11))
 ################################################################################################################
 fig_fit_trials, ax_fit_trials = plt.subplots(5, 3, figsize=(10, 11))
 fig_fit_trials_calojets, ax_fit_trials_calojets = plt.subplots(5, 3, figsize=(10, 11))
@@ -732,7 +753,7 @@ for method in [
         x_pts, y_pts = cp[4], cp[5]
         col, row = PROCESS_TO_ROW_COL[process]
         xs, ys, fit_params, fit_cov = get_func_fit(
-            x_pts, y_pts, confusion_term="CaloJet" in method
+            x_pts, y_pts, confusion_term=True
         )
         ax[row, col].plot(
             xs,
@@ -744,11 +765,10 @@ for method in [
         ax[row, col].plot(x_pts, y_pts, "x", color=method_color[method], markersize=4)
         ax[row, col].set_ylabel("$\sigma_E / E_{true}$")
         ax[row, col].set_title(label)  # + rf"({print_noise_model(fit_params)})")
-        
         # Phi resolution plots for PF vs CaloJets comparison
         if "phi" in f_angular and process in f_angular["phi"]:
             _, _, _, _, x_pts_phi, y_pts_phi, _ = f_angular["phi"][process]
-            xs_phi, ys_phi, fit_params_phi, fit_cov_phi = get_func_fit(x_pts_phi, y_pts_phi, confusion_term=True)
+            xs_phi, ys_phi, fit_params_phi, fit_cov_phi = get_func_fit(x_pts_phi, y_pts_phi, confusion_term=False)
             ax_ang_phi_pf_calo[row, col].plot(
                 xs_phi,
                 ys_phi,
@@ -760,11 +780,10 @@ for method in [
             ax_ang_phi_pf_calo[row, col].set_ylabel("$\sigma_{\phi}$ [rad]")
             ax_ang_phi_pf_calo[row, col].set_xlabel("$E_{true}$ [GeV]")
             ax_ang_phi_pf_calo[row, col].set_title(label)
-        
         # Theta resolution plots for PF vs CaloJets comparison
         if "theta" in f_angular and process in f_angular["theta"]:
             _, _, _, _, x_pts_theta, y_pts_theta, _ = f_angular["theta"][process]
-            xs_theta, ys_theta, fit_params_theta, fit_cov_theta = get_func_fit(x_pts_theta, y_pts_theta, confusion_term=True)
+            xs_theta, ys_theta, fit_params_theta, fit_cov_theta = get_func_fit(x_pts_theta, y_pts_theta, confusion_term=False)
             ax_ang_theta_pf_calo[row, col].plot(
                 xs_theta,
                 ys_theta,
@@ -776,6 +795,21 @@ for method in [
             ax_ang_theta_pf_calo[row, col].set_ylabel("$\sigma_{\\theta}$ [rad]")
             ax_ang_theta_pf_calo[row, col].set_xlabel("$E_{true}$ [GeV]")
             ax_ang_theta_pf_calo[row, col].set_title(label)
+        # Eta resolution plots for PF vs CaloJets comparison
+        if "eta" in f_angular and process in f_angular["eta"]:
+            _, _, _, _, x_pts_eta, y_pts_eta, _ = f_angular["eta"][process]
+            xs_eta, ys_eta, fit_params_eta, fit_cov_eta = get_func_fit(x_pts_eta, y_pts_eta, confusion_term=False)
+            ax_ang_eta_pf_calo[row, col].plot(
+                xs_eta,
+                ys_eta,
+                label=f"{method_dict[method]} {print_params(fit_params_eta)}",
+                color=method_color[method],
+                linestyle=linestyle,
+            )
+            ax_ang_eta_pf_calo[row, col].plot(x_pts_eta, y_pts_eta, "x", color=method_color[method], markersize=4)
+            ax_ang_eta_pf_calo[row, col].set_ylabel("$\sigma_{\eta}$")
+            ax_ang_eta_pf_calo[row, col].set_xlabel("$E_{true}$ [GeV]")
+            ax_ang_eta_pf_calo[row, col].set_title(label)
         
         if "CaloJet" in method:
             ax_fits = ax_fit_trials_calojets
@@ -924,6 +958,12 @@ for i in range(len(ax_ang_theta_pf_calo)):
         ax_ang_theta_pf_calo[i, j].grid()
         ax_ang_theta_pf_calo[i, j].set_ylim(0, 0.045)
 
+for i in range(len(ax_ang_eta_pf_calo)):
+    for j in range(len(ax_ang_eta_pf_calo[i])):
+        ax_ang_eta_pf_calo[i, j].legend(fontsize=6.5)
+        ax_ang_eta_pf_calo[i, j].grid()
+        ax_ang_eta_pf_calo[i, j].set_ylim(0, 0.06)
+
 for ax in [ax_fit_trials, ax_fit_trials_calojets]:
     for i in range(len(ax)):
         for j in range(len(ax[i])):
@@ -932,7 +972,7 @@ for ax in [ax_fit_trials, ax_fit_trials_calojets]:
 
 fig.tight_layout()
 annotate_matrix_plot_with_arrows(fig)
-fig_path = os.path.join(outputDir, f"JER_comparison_PF_and_CaloJets.pdf")
+fig_path = os.path.join(outputDir, f"Jet_Energy_Resolution_PF_vs_CaloJets.pdf")
 
 print("Saving figure to", fig_path)
 fig.savefig(fig_path)
@@ -940,37 +980,44 @@ fig.savefig(fig_path)
 # Save angular resolution plots
 fig_ang_phi_pf_calo.tight_layout()
 annotate_matrix_plot_with_arrows(fig_ang_phi_pf_calo)
-fig_path_angular_phi_pf_calo = os.path.join(outputDir, f"Angular_Resolution_phi_comparison_PF_and_CaloJets.pdf")
+fig_path_angular_phi_pf_calo = os.path.join(outputDir, f"Angular_Resolution_Phi_comparison_PF_vs_CaloJets.pdf")
 print("Saving figure to", fig_path_angular_phi_pf_calo)
 fig_ang_phi_pf_calo.savefig(fig_path_angular_phi_pf_calo)
 
 fig_ang_theta_pf_calo.tight_layout()
 annotate_matrix_plot_with_arrows(fig_ang_theta_pf_calo)
-fig_path_angular_theta_pf_calo = os.path.join(outputDir, f"Angular_Resolution_theta_comparison_PF_and_CaloJets.pdf")
+fig_path_angular_theta_pf_calo = os.path.join(outputDir, f"Angular_Resolution_Theta_comparison_PF_vs_CaloJets.pdf")
 print("Saving figure to", fig_path_angular_theta_pf_calo)
 fig_ang_theta_pf_calo.savefig(fig_path_angular_theta_pf_calo)
 
+fig_ang_eta_pf_calo.tight_layout()
+annotate_matrix_plot_with_arrows(fig_ang_eta_pf_calo)
+fig_path_angular_eta_pf_calo = os.path.join(outputDir, f"Angular_Resolution_eta_comparison_PF_vs_CaloJets.pdf")
+print("Saving figure to", fig_path_angular_eta_pf_calo)
+fig_ang_eta_pf_calo.savefig(fig_path_angular_eta_pf_calo)
+
 fig_mH.tight_layout()
-fig_mH_path = os.path.join(outputDir, f"Higgs_mass_comparison_PF_and_CaloJets.pdf")
+fig_mH_path = os.path.join(outputDir, f"Higgs_mass_comparison_PF_vs_CaloJets.pdf")
 print("Saving figure to", fig_mH_path)
 
 fig_mH.savefig(fig_mH_path)
 fig_E_mH_gluons.tight_layout()
 fig_E_mH_gluons_path = os.path.join(
-    outputDir, f"Higgs_mass_and_E_resolution_gluon_processes.pdf"
+    outputDir, f"Higgs_mass_and_Jet_Energy_Resolution_Gluon_processes.pdf"
 )
 print("Saving figure to", fig_E_mH_gluons_path)
 fig_E_mH_gluons.savefig(fig_E_mH_gluons_path)
 
 fig_fit_trials_calojets.tight_layout()
 annotate_matrix_plot_with_arrows(fig_fit_trials_calojets)
-path_cj = os.path.join(outputDir, f"JER_fitting_CaloJets.pdf")
+path_cj = os.path.join(outputDir, f"Jet_Energy_Resolution_fitting_CaloJets.pdf")
 fig_fit_trials_calojets.savefig(path_cj)
 
 # Similar for fig_fit_trials
+
 fig_fit_trials.tight_layout()
 annotate_matrix_plot_with_arrows(fig_fit_trials)
-path_pf = os.path.join(outputDir, f"JER_fitting_PFJets.pdf")
+path_pf = os.path.join(outputDir, f"Jet_Energy_Resolution_fitting_PF_Jets.pdf")
 fig_fit_trials.savefig(path_pf)
 
 if not args.AK_comparison:

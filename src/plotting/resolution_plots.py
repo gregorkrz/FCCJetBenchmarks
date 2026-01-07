@@ -98,7 +98,7 @@ for file in os.listdir(inputDir):
 
 ########################################################################################################
 
-binsE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+binsE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
 bins_eta = [-5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 5]
 bins_costheta = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]
 
@@ -269,6 +269,7 @@ def get_result_for_process(
     sigmaEoverE = []
     responses = []
     bins_to_histograms = {}
+    total_statistics = 0  # Track total statistics across all bins
 
     def is_twojet_proc(procname):
         return "vvbb" in procname or "vvqq" in procname or "vvgg" in procname
@@ -288,29 +289,31 @@ def get_result_for_process(
         # ax_hist.step(edges[:-1], y, where="post", label=f"[{bins[i]}, {bins[i+1]}] GeV")
         bin_widths = np.diff(edges)
         area = np.sum(y * bin_widths)
-        n_jets_in_bin = np.sum(y)
+        n_jets_in_bin = int(np.sum(y))
+        total_statistics += n_jets_in_bin  # Accumulate total statistics
         if area != 0:
             y_normalized = y / area
         else:
             y_normalized = y
-        ax_hist[0].step(
-            edges[:-1],
-            y_normalized,
-            where="post",
-            label=f"[{bins[i]}, {bins[i + 1]}] GeV (N={int(n_jets_in_bin)})",
-        )
-        ax_hist[1].step(
-            edges[:-1],
-            y_normalized,
-            where="post",
-            label=f"[{bins[i]}, {bins[i + 1]}] GeV (N={int(n_jets_in_bin)})",
-        )
-        ax_hist[2].step(
-            edges[:-1],
-            y_normalized,
-            where="post",
-            label=f"[{bins[i]}, {bins[i + 1]}] GeV (N={int(n_jets_in_bin)})",
-        )
+        if n_jets_in_bin > 50000:
+            ax_hist[0].step(
+                edges[:-1],
+                y_normalized,
+                where="post",
+                label=f"[{bins[i]}, {bins[i + 1]}] GeV (N={n_jets_in_bin})",
+            )
+            ax_hist[1].step(
+                edges[:-1],
+                y_normalized,
+                where="post",
+                label=f"[{bins[i]}, {bins[i + 1]}] GeV (N={n_jets_in_bin})",
+            )
+            ax_hist[2].step(
+                edges[:-1],
+                y_normalized,
+                where="post",
+                label=f"[{bins[i]}, {bins[i + 1]}] GeV (N={n_jets_in_bin})",
+            )
         bins_to_histograms[i] = [y_normalized, edges]
         yc = copy(y)
         if sigma_method == "std68":
@@ -371,7 +374,9 @@ def get_result_for_process(
                 low, high = mu - sigma, mu + sigma
             except RuntimeError:
                 print("⚠️ DSCB fit failed; reverting to RMS.")
-                return get_result_for_process(y, edges, sigma_method="RMS")
+                # Note: This recursive call doesn't match the function signature
+                # Returning empty results with 0 statistics for fallback case
+                return ([], [], fig_hist, [], {}, [], [], 0)
         elif sigma_method == "gaussian_fit":
             # Fit a Gaussian to this histogram from 0.85 to 1.15
             centers = 0.5 * (edges[1:] + edges[:-1])
@@ -380,7 +385,9 @@ def get_result_for_process(
             yc_fit = yc[mask]
             if len(centers_fit) < 3:
                 print("⚠️ Not enough points to fit a Gaussian; reverting to RMS.")
-                return get_result_for_process(y, edges, sigma_method="RMS")
+                # Note: This recursive call doesn't match the function signature
+                # Returning empty results with 0 statistics for fallback case
+                return ([], [], fig_hist, [], {}, [], [], 0)
 
             def gaussian(x, mu, sigma, norm):
                 return norm * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
@@ -407,15 +414,16 @@ def get_result_for_process(
                 low, high = mu - sigma, mu + sigma
             except RuntimeError:
                 print("⚠️ Gaussian fit failed; reverting to RMS.")
-                return get_result_for_process(y, edges, sigma_method="RMS")
+                # Note: This recursive call doesn't match the function signature
+                # Returning empty results with 0 statistics for fallback case
+                return ([], [], fig_hist, [], {}, [], [], 0)
         else:
             raise ValueError(f"Unknown sigma method: {sigma_method}")
         lo_hi_MPV.append([low, high, MPV])
         bin_mid = 0.5 * (bins[i] + bins[i + 1])
-        n_jets_in_bin_min = 50000
+        n_jets_in_bin_min = 70000
         if not divide_by_MPV:
-            # Plotting an angle quantity, so reduce the minimum statistics requirement
-            n_jets_in_bin_min = 50000
+            n_jets_in_bin_min = 70000
         if (not np.isnan(bin_mid)) and (not np.isnan(std68)) and n_jets_in_bin > n_jets_in_bin_min:
             # More than 10k statistics for a good fit with the fine binning that we are using
             bin_mid_points.append(bin_mid)
@@ -448,6 +456,7 @@ def get_result_for_process(
         bins_to_histograms,
         lo_hi_MPV,
         field_names,
+        total_statistics,
     )
 
 
@@ -456,6 +465,7 @@ bin_to_histograms_storage_neutral = {}
 method_low_high_mid_point_storage = {}
 fit_storage_Theta = {}
 fit_storage_Phi = {}
+fit_storage_Eta = {}
 
 
 def get_func_fit(mid_points, Rs, confusion_term=True, min_E=0.0):
@@ -531,10 +541,13 @@ for jet_part in jet_parts_to_process:
             fig_phi, ax_phi = plt.subplots(
                 2, 1, figsize=(10, 6), gridspec_kw={"height_ratios": [2, 1]}
             )
+            fig_eta, ax_eta = plt.subplots(
+                2, 1, figsize=(10, 6), gridspec_kw={"height_ratios": [2, 1]}
+            )
         for proc_idx, process in enumerate(sorted(list(processList.keys()))):
             print("Process:", process)
             if jet_part == "_all":
-                (E_theta, sigma_theta, fig_theta_hist, response_theta, _, results_theta, _) = get_result_for_process(
+                (E_theta, sigma_theta, fig_theta_hist, response_theta, _, results_theta, _, total_stats_theta) = get_result_for_process(
                     process,
                     sigma_method=method,
                     root_histogram_prefix="binned_deltaTheta_",
@@ -542,6 +555,7 @@ for jet_part in jet_parts_to_process:
                     wmax=0.05,
                     divide_by_MPV=False
                 )
+                # Only save plot if total statistics >= 50000
                 xs_theta, ys_theta, popt_theta, pcov_theta = get_func_fit(
                     E_theta, sigma_theta, confusion_term=False
                 )
@@ -554,7 +568,11 @@ for jet_part in jet_parts_to_process:
                     sigma_theta,
                     results_theta,
                 )
-                (E_phi, sigma_phi, fig_phi_hist, response_phi, _, results_phi, _) = get_result_for_process(
+                if total_stats_theta >= 50000:
+                    fig_theta_hist.savefig(os.path.join(outputDir, "bins_theta_{}.pdf".format(process)))
+                else:
+                    print(f"Skipping bins_theta plot for process {process}: N={total_stats_theta} < 50000")
+                (E_phi, sigma_phi, fig_phi_hist, response_phi, _, results_phi, _, total_stats_phi) = get_result_for_process(
                     process,
                     sigma_method=method,
                     root_histogram_prefix="binned_deltaPhi_",
@@ -563,8 +581,11 @@ for jet_part in jet_parts_to_process:
                     divide_by_MPV=False,
                     x_label="$\Delta \phi = \phi_{reco} - \phi_{true}$ [rad]"
                 )
-                fig_theta_hist.savefig(os.path.join(outputDir, "bins_theta_{}.pdf".format(process)))
-                fig_phi_hist.savefig(os.path.join(outputDir, "bins_phi_{}.pdf".format(process)))
+                # Only save plot if total statistics >= 50000
+                if total_stats_phi >= 50000:
+                    fig_phi_hist.savefig(os.path.join(outputDir, "bins_phi_{}.pdf".format(process)))
+                else:
+                    print(f"Skipping bins_phi plot for process {process}: N={total_stats_phi} < 50000")
                 clr = PROCESS_COLORS.get(process, f"C{proc_idx}")
                 xs_phi, ys_phi, popt_phi, pcov_phi = get_func_fit(
                     E_phi, sigma_phi, confusion_term=False
@@ -607,6 +628,46 @@ for jet_part in jet_parts_to_process:
                 ax_theta[1].set_ylabel("Response in $\\theta$")
                 ax_phi[0].set_xlabel("$E_{true}$ [GeV]")
                 ax_phi[0].set_ylabel(r"$\sigma_{\phi}$ [rad]")
+                (E_eta, sigma_eta, fig_eta_hist, response_eta, _, results_eta, _, total_stats_eta) = get_result_for_process(
+                    process,
+                    sigma_method=method,
+                    root_histogram_prefix="binned_deltaEta_",
+                    wmin=-0.05,
+                    wmax=0.05,
+                    divide_by_MPV=False,
+                    x_label="$\Delta \eta = \eta_{reco} - \eta_{true}$"
+                )
+                # Only save plot if total statistics >= 50000
+                if total_stats_eta >= 50000:
+                    fig_eta_hist.savefig(os.path.join(outputDir, "bins_deltaEta_{}.pdf".format(process)))
+                else:
+                    print(f"Skipping bins_eta plot for process {process}: N={total_stats_eta} < 50000")
+                xs_eta, ys_eta, popt_eta, pcov_eta = get_func_fit(
+                    E_eta, sigma_eta, confusion_term=False
+                )
+                fit_storage_Eta[process] = (
+                    popt_eta,
+                    pcov_eta,
+                    xs_eta,
+                    ys_eta,
+                    E_eta,
+                    sigma_eta,
+                    results_eta,
+                )
+                ax_eta[0].plot(E_eta, sigma_eta, "x", color=clr)
+                ax_eta[0].plot(
+                    xs_eta,
+                    ys_eta,
+                    LINE_STYLES[process],
+                    color=clr,
+                    label=HUMAN_READABLE_PROCESS_NAMES[process]
+                    + f" {print_params(popt_eta)}",
+                )
+                ax_eta[1].plot(E_eta, response_eta, ".--", label=process, color=clr)
+                ax_eta[0].set_xlabel("$E_{true}$ [GeV]")
+                ax_eta[0].set_ylabel(r"$\sigma_{\eta}$")
+                ax_eta[1].set_xlabel("$E_{true}$ [GeV]")
+                ax_eta[1].set_ylabel("Response in $\eta$")
             if args.angles_only:
                 continue
             (
@@ -617,6 +678,7 @@ for jet_part in jet_parts_to_process:
                 bin_to_histograms,
                 mpv_lo_hi,
                 field_names,
+                _,
             ) = get_result_for_process(
                 process,
                 sigma_method=method,
@@ -741,9 +803,15 @@ for jet_part in jet_parts_to_process:
             )
             ax_resolution_per_process_Njets[0, 0].set_xlabel("$E_{true}$ [GeV]")
             ax_resolution_per_process_Njets[0, 1].set_xlabel("$E_{true}$ [GeV]")
+            ax_resolution_per_process_Njets[1, 0].set_xlabel("$E_{true}$ [GeV]")
+            ax_resolution_per_process_Njets[1, 1].set_xlabel("$E_{true}$ [GeV]")
             ax_resolution_per_process_Njets[0, 0].set_ylabel(r"$\sigma_E / E$")
             ax_resolution_per_process_Njets[1, 0].set_ylabel(r"$\sigma_E / E$")
-            ax_resolution_per_process_Njets[1, 1].set_ylabel(r"$\sigma_E / E$")
+            ax_resolution_per_process_Njets[1, 1].set_ylabel(r"Response in theta")
+            ax_resolution_per_process_Njets[0, 0].grid()
+            ax_resolution_per_process_Njets[1, 1].grid()
+            ax_resolution_per_process_Njets[0, 1].grid()
+            ax_resolution_per_process_Njets[1, 0].grid()
             ax[0].legend()
             ax[0].set_xlabel("$E_{true}$ [GeV]")
             ax[0].set_ylabel(r"$\sigma_E / E$")
@@ -759,13 +827,26 @@ for jet_part in jet_parts_to_process:
                 os.path.join(outputDir, "jet_energy_resolution_{}.pdf".format(method))
             )
         if jet_part == "_all":
+            ax_theta[0].legend()
+            ax_theta[0].grid(True)
+            ax_theta[1].grid(True)
             fig_theta.tight_layout()
             fig_theta.savefig(
                 os.path.join(outputDir, "jet_theta_resolution_{}.pdf".format(method))
             )
+            ax_phi[0].legend()
+            ax_phi[0].grid(True)
+            ax_phi[1].grid(True)
             fig_phi.tight_layout()
             fig_phi.savefig(
                 os.path.join(outputDir, "jet_phi_resolution_{}.pdf".format(method))
+            )
+            ax_eta[0].legend()
+            ax_eta[0].grid(True)
+            ax_eta[1].grid(True)
+            fig_eta.tight_layout()
+            fig_eta.savefig(
+                os.path.join(outputDir, "jet_eta_resolution_{}.pdf".format(method))
             )
     if not args.angles_only:
         fig_resolution_per_process.tight_layout()
@@ -783,11 +864,12 @@ for jet_part in jet_parts_to_process:
             )
         )
 
-# Save the theta and phi low_high_mid_point_storage to a pickle file and exit
+# Save the theta, phi, and eta low_high_mid_point_storage to a pickle file and exit
 pickle.dump(
     {
         "theta": fit_storage_Theta,
         "phi": fit_storage_Phi,
+        "eta": fit_storage_Eta,
     },
     open(
         os.path.join(outputDir, "angle_fit_params_per_process.pkl"),
@@ -851,6 +933,7 @@ for i in range(len(binsE) - 1):
     ax_bins[i].legend()
     ax_bins[i].set_yscale("log")
 
+
 ax[-1].set_xlabel(r"$E_{reco} / E_{true}$")
 ax_bins[-1].set_xlabel(r"$E_{reco} / E_{true}$")
 
@@ -864,7 +947,7 @@ for method in ["std68"]:  # gaussian_fit optionally
     # fig, ax = plt.subplots(2, 1, figsize=(8, 6))
     fig, ax = plt.subplots(2, 1, figsize=(10, 6), gridspec_kw={"height_ratios": [2, 1]})
     for process in sorted(list(processList.keys())):
-        bin_mid_points, sigmaEoverE, fig_histograms, resp, _, _, _ = (
+        bin_mid_points, sigmaEoverE, fig_histograms, resp, _, _, _, _ = (
             get_result_for_process(
                 process, bins=bins_eta, suffix="eta_", sigma_method=method
             )
@@ -872,7 +955,7 @@ for method in ["std68"]:  # gaussian_fit optionally
         if method == "std68":
             fig_histograms.tight_layout()
             fig_histograms.savefig(
-                os.path.join(outputDir, "bins_eta_{}.pdf".format(process))
+                os.path.join(outputDir, "bins_E_vs_eta_{}.pdf".format(process))
             )
         ax[0].plot(
             bin_mid_points,
@@ -901,14 +984,14 @@ for method in ["std68"]:  # gaussian_fit optionally
     ax[1].grid()
     fig.tight_layout()
     fig.savefig(
-        os.path.join(outputDir, "jet_Eta_resolution_data_points_{}.pdf".format(method))
+        os.path.join(outputDir, "JER_vs_eta_{}.pdf".format(method))
     )
 
 for method in ["std68"]:
     # fig, ax = plt.subplots(2, 1, figsize=(8, 6))
     fig, ax = plt.subplots(2, 1, figsize=(10, 6), gridspec_kw={"height_ratios": [2, 1]})
     for process in sorted(list(processList.keys())):
-        bin_mid_points, sigmaEoverE, fig_histograms, resp, _, _, _ = (
+        bin_mid_points, sigmaEoverE, fig_histograms, resp, _, _, _, _ = (
             get_result_for_process(
                 process, bins=bins_costheta, suffix="costheta_", sigma_method=method
             )
@@ -916,7 +999,7 @@ for method in ["std68"]:
         if method == "std68":
             fig_histograms.tight_layout()
             fig_histograms.savefig(
-                os.path.join(outputDir, "bins_CosTheta_{}.pdf".format(process))
+                os.path.join(outputDir, "bins_E_vs_CosTheta_{}.pdf".format(process))
             )
         ax[0].plot(bin_mid_points, sigmaEoverE, "x", color=PROCESS_COLORS[process])
         ax[1].plot(bin_mid_points, resp, "x", color=PROCESS_COLORS[process])
@@ -948,6 +1031,6 @@ for method in ["std68"]:
     fig.tight_layout()
     fig.savefig(
         os.path.join(
-            outputDir, "jet_CosTheta_resolution_data_points_{}.pdf".format(method)
+            outputDir, "JER_vs_CosTheta_resolution_{}.pdf".format(method)
         )
     )

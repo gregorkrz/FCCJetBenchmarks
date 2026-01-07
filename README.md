@@ -47,6 +47,8 @@ To see all the options of the histmaker command, simply run the command without 
 fccanalysis run src/histmaker.py
 ```
 
+Instead of running the histmaker, you can also use pre-computed histograms available at https://cernbox.cern.ch/s/QM81dj4GeMWP03Q.
+
 2. **Run the plotting scripts:**
 
 ```bash
@@ -295,20 +297,6 @@ FCCJetBenchmarks/
 │   └── ...
 └── delphes_cards/                # Detector simulation cards
 ```
-
-## Important plots
-
-Individual:
-`plots_resolution/jet_energy_resolution_per_process_comparison_Njets_all.pdf`: Jet energy resolution (and response) for 2, 4, 6 jets
-(similarly, `plots_resolution/jet_energy_resolution_per_process_comparison_Njets_neutral.pdf`, _charged, and _photon )
-`plots_resolution/JER_vs_CosTheta_resolution_std68.pdf`: Jet energy resolution vs cos theta. The event selection might be too biased and we are seeing a worse resolution for cos theta close to pi/2.
-`plots_mass/Higgs_mass_plots_sorted_per_N_jets.pdf`: Higgs mass plot, for 2, 4 and 6 jet events
-plots_mass/Higgs_mass_plots_sorted_per_process_type.pdf: Higgs mass plot for different events, with 2, 4, and 6 jets plotted on the same canvas
-plots_mass/Higgs_mass_reco_overlaid_mH_reco_normalized.pdf: Higgs mass peak for all the processes in one plot
-plots_mass/log_Higgs_mass_reco_vs_gen.pdf: 
-
-Joint:
-
 
 
 ## Main results

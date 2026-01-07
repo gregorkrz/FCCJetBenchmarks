@@ -466,11 +466,11 @@ for i, fname in enumerate(sorted(root_files)):
         axlog[i, k].legend()
         axlog[i, k].set_ylim([1e-3, 1])
         ax[i, k].legend()
-        axlog[i, k].set_title(label)
+        axlog[i, k].set_title(HUMAN_READABLE_PROCESS_NAMES[label])
         axlog[i, k].set_yscale("log")
         axlog[i, k].set_xlabel("$m_H$ [GeV]")
         axlog[i, k].set_ylabel("Events (norm.)")
-        ax[i, k].set_title(label)
+        ax[i, k].set_title(HUMAN_READABLE_PROCESS_NAMES[label])
     ax[i, 1].set_xlim([80, 140])
     axlog[i, 1].set_xlim([80, 140])
 
@@ -605,7 +605,7 @@ plt.clf()
 
 # Histogram of ratio_jet_energies_fancy_Neutral_part and ratio_jet_energies_fancy_Charged_part and ratio_jet_energies_fancy
 # so basically neutral, charged and all particles - make one histogram for each root file (with three lines, Neutral, Charged, and All) and stack them vertically
-binsE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+binsE = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
 
 fig, ax = plt.subplots(
     len(root_files), len(binsE), figsize=(4 * len(binsE), 4 * len(root_files))
