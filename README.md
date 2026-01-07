@@ -112,6 +112,11 @@ and neutrinos; those are filtered out in the analysis.
 * `RecoMCLink` of type `podio::Link<edm4hep::ReconstructedParticle,edm4hep::MCParticle>`,
 containing links between reconstructed particles and MC particles. This is used for the ideal gen jet-reco jet matching.
 
+  
+The `CaloJetDurham` are computed in Delphes at the moment, as it seems that the current version of k4SimDelphes doesn't
+store the calo hit energies.
+
+
 ### Adding your own processes
 
 To add a new process, `src/process_config.py` needs to be updated with the new process name, number of jets, as well as
@@ -379,3 +384,4 @@ fccanalysis run src/histmaker.py -- \
 [4] Bierlich, C., Chakraborty, S., Desai, N., Gellersen, L., Helenius, I., Ilten, P., Lönnblad, L., Mrenna, S., Prestel, S., Preuss, C. T., Sjöstrand, T., Skands, P., Utheim, M., & Verheyen, R. (2022). A comprehensive guide to the physics and usage of PYTHIA 8.3. ArXiv. https://arxiv.org/abs/2203.11601
 
 [5] Cacciari, Matteo, et al. “The Anti-K_t Jet Clustering Algorithm.” arXiv:0802.1189, arXiv, 21 Apr. 2008. arXiv.org, https://doi.org/10.48550/arXiv.0802.1189.
+
