@@ -290,7 +290,7 @@ for method in methods_filtered:
         x_pts, y_pts = cp[4], cp[5]
         col, row = PROCESS_TO_ROW_COL[process]
         # get func fit
-        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=False)
+        xs, ys, fit_params, fit_cov = get_func_fit(x_pts, y_pts, confusion_term=True)
         ax[row, col].plot(
             xs,
             ys,
@@ -833,9 +833,10 @@ for method in [
             x_pts,
             y_pts,
             confusion_term=True,
-            error_summation=True,
-            bounds_constant=[0.01, 0.03],
+            error_summation=False,
+            bounds_constant=[0.005, 0.04],
         )
+
         ax_fits[row, col].plot(
             xs,
             ys,
@@ -853,8 +854,8 @@ for method in [
             x_pts,
             y_pts,
             confusion_term=False,
-            error_summation=True,
-            bounds_constant=[0.01, 0.03],
+            error_summation=False,
+            bounds_constant=[0.005, 0.04],
         )
         ax_fits[row, col].plot(
             xs,
@@ -945,6 +946,7 @@ for i in range(len(ax)):
         ax[i, j].legend(fontsize=6.5)
         ax[i, j].grid()
         ax[i, j].set_ylim([0, 0.35])
+        ax[i, j].set_xlabel("$E_{true}$ [GeV]")
 
 # Format angular resolution plots
 for i in range(len(ax_ang_phi_pf_calo)):
@@ -952,23 +954,27 @@ for i in range(len(ax_ang_phi_pf_calo)):
         ax_ang_phi_pf_calo[i, j].legend(fontsize=6.5)
         ax_ang_phi_pf_calo[i, j].grid()
         ax_ang_phi_pf_calo[i, j].set_ylim(0, 0.06)
+        ax_ang_phi_pf_calo[i, j].set_xlabel("$E_{true}$ [GeV]")
 for i in range(len(ax_ang_theta_pf_calo)):
     for j in range(len(ax_ang_theta_pf_calo[i])):
         ax_ang_theta_pf_calo[i, j].legend(fontsize=6.5)
         ax_ang_theta_pf_calo[i, j].grid()
         ax_ang_theta_pf_calo[i, j].set_ylim(0, 0.045)
+        ax_ang_theta_pf_calo[i, j].set_xlabel("$E_{true}$ [GeV]")
 
 for i in range(len(ax_ang_eta_pf_calo)):
     for j in range(len(ax_ang_eta_pf_calo[i])):
         ax_ang_eta_pf_calo[i, j].legend(fontsize=6.5)
         ax_ang_eta_pf_calo[i, j].grid()
         ax_ang_eta_pf_calo[i, j].set_ylim(0, 0.06)
+        ax_ang_eta_pf_calo[i, j].set_xlabel("$E_{true}$ [GeV]")
 
 for ax in [ax_fit_trials, ax_fit_trials_calojets]:
     for i in range(len(ax)):
         for j in range(len(ax[i])):
             ax[i, j].legend(fontsize=6.5)
             ax[i, j].grid()
+            ax[i, j].set_xlabel("$E_{true}$ [GeV]")
 
 fig.tight_layout()
 annotate_matrix_plot_with_arrows(fig)

@@ -468,39 +468,62 @@ fit_storage_Phi = {}
 fit_storage_Eta = {}
 
 
-def get_func_fit(mid_points, Rs, confusion_term=True, min_E=0.0):
-    # basically filter out points with mid_points < min_E
+def get_func_fit(
+    mid_points,
+    Rs,
+    confusion_term=True,
+    min_E=0.0,
+    bounds_constant=[0, np.inf],
+    bounds_confusion=[0, np.inf],
+    bounds_noise=[0, np.inf],
+    error_summation=False,
+):
+    # Basically filter out points with mid_points < min_E
+
     mask = np.array(mid_points) >= min_E
     mid_points = np.array(mid_points)[mask]
     Rs = np.array(Rs)[mask]
     if confusion_term:
+
         def resolution_func(E, a, b, c):
-            return np.sqrt((a / np.sqrt(E)) ** 2 + b**2 + (c / E) ** 2)
-        if len(mid_points) < 3:
-            popt, pcov = [0.5, 0.03, 0.1], np.zeros((3, 3))
-            print("Not enough points to fit with confusion term; using default parameters.")
-        else:
-            popt, pcov = curve_fit(
-                resolution_func, mid_points, Rs, p0=[0.5, 0.03, 0.1], maxfev=10000
-            )
+            if error_summation:
+                return np.sqrt((a / np.sqrt(E)) ** 2 + b**2 + (c / E) ** 2)
+            return a / np.sqrt(E) + b + c / E
+
+        bounds = (
+            [bounds_noise[0], bounds_constant[0], bounds_confusion[0]],
+            [bounds_noise[1], bounds_constant[1], bounds_confusion[1]],
+        )
+        popt, pcov = curve_fit(
+            resolution_func,
+            mid_points,
+            Rs,
+            p0=[0.5, 0.03, 0.1],
+            maxfev=10000,
+            bounds=bounds,
+        )
         # return a smooth function throughout mid_points
     else:
+
         def resolution_func(E, a, b):
-            return np.sqrt((a / np.sqrt(E)) ** 2 + b**2)
-        if len(mid_points) < 2:
-            popt, pcov = [0.5, 0.03], np.zeros((2, 2))
-            print("Not enough points to fit without confusion term; using default parameters.")
-        else:
-            popt, pcov = curve_fit(
-                resolution_func, mid_points, Rs, p0=[0.5, 0.03], maxfev=10000
-            )
+            if error_summation:
+                return np.sqrt((a / np.sqrt(E)) ** 2 + b**2)
+            return a / np.sqrt(E) + b
+
+        bounds = (
+            [bounds_noise[0], bounds_constant[0]],
+            [bounds_noise[1], bounds_constant[1]],
+        )
+        popt, pcov = curve_fit(
+            resolution_func, mid_points, Rs, p0=[0.5, 0.03], maxfev=10000, bounds=bounds
+        )
         # return a smooth function throughout mid_points
-    if len(mid_points) == 0:
-        return np.array([]), np.array([]), popt, pcov
     xs = np.linspace(min(mid_points), max(mid_points), 100)
     ys = resolution_func(xs, *popt)
     popt = np.abs(popt)
     return xs, ys, popt, pcov
+
+
 
 process_popt_storage = (
     {}
@@ -709,7 +732,7 @@ for jet_part in jet_parts_to_process:
                 )
                 continue
             xs, ys, popt, pcov = get_func_fit(
-                bin_mid_points, sigmaEoverE, confusion_term="CaloJet" in inputDir
+                bin_mid_points, sigmaEoverE, confusion_term=True, bounds_constant=[0.005, 0.04]
             )
             print(f"Fitted parameters for {process} using {method}: {popt}")
             if process not in process_popt_storage:
@@ -807,7 +830,8 @@ for jet_part in jet_parts_to_process:
             ax_resolution_per_process_Njets[1, 1].set_xlabel("$E_{true}$ [GeV]")
             ax_resolution_per_process_Njets[0, 0].set_ylabel(r"$\sigma_E / E$")
             ax_resolution_per_process_Njets[1, 0].set_ylabel(r"$\sigma_E / E$")
-            ax_resolution_per_process_Njets[1, 1].set_ylabel(r"Response in theta")
+            ax_resolution_per_process_Njets[1, 1].set_ylabel(r"Response in E reco / E true")
+            ax_resolution_per_process_Njets[0, 1].set_ylabel(r"Response in E reco / E true")
             ax_resolution_per_process_Njets[0, 0].grid()
             ax_resolution_per_process_Njets[1, 1].grid()
             ax_resolution_per_process_Njets[0, 1].grid()

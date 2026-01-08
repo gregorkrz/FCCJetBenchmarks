@@ -188,12 +188,12 @@ The jet energy resolution is parameterized using one of two functional forms, de
 
 **With confusion term**:
 $$
-\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus N \oplus \frac{C}{E}
+\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus \frac{N}{E}  \oplus C
 $$
 
 **Without confusion term**:
 $$
-\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus N
+\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus C
 $$
 
 Where:
