@@ -126,7 +126,7 @@ a label, color and line style for plotting.
 ### Jet clustering algorithms
 The supported jet clustering algorithms are implemented using FastJet [1].
 
-### Durham [1]
+**Durham [1]**
 
 Sequential recombination with distance measures
 
@@ -136,14 +136,14 @@ d_{ij} = 2 \min(E_i^2, E_j^2) (1 - \cos \theta_{ij}),
 d_{iB} = E_i^2
 $$
 
-where \( E_i \) is the particle energy and \( \theta_{ij} \) is the opening angle.
+where $E_i$ is the particle energy and $\theta_{ij}$ is the opening angle.
 Durham is used in exclusive mode, i.e. it stops after finding the desired number of jets.
 
 ---
 
-### Anti-\(k_t\) [5]
+**Anti-kt [5]**
 
-Hadron-collider anti-\(k_t\) distance measure
+Hadron-collider anti-kt distance measure
 
 $$
 d_{ij} = \min(p_{T,i}^{-2}, p_{T,j}^{-2})
@@ -154,11 +154,11 @@ $$
 
 ---
 
-### Generalized \(e^+e^-\) anti-\(k_t\)
+### Generalized $ e^+e^- $ anti-kt
 
 As defined in [1], Section 4.5.
 
-Energy–angle version of anti-\(k_t\), more suitable for \(e^+e^-\) collisions:
+Energy–angle version of anti-kt, more suitable for $e^+ e^-$ collisions:
 
 $$
 d_{ij} = \min(E_i^{-2}, E_j^{-2}) (1 - \cos \theta_{ij}),
