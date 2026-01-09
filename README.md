@@ -130,11 +130,9 @@ The supported jet clustering algorithms are implemented using FastJet [1].
 
 Sequential recombination with distance measures
 
-$$
-d_{ij} = 2 \min(E_i^2, E_j^2) (1 - \cos \theta_{ij}), 
+$$d_{ij} = 2 \min(E_i^2, E_j^2) (1 - \cos \theta_{ij}), 
 \qquad
-d_{iB} = E_i^2
-$$
+d_{iB} = E_i^2$$
 
 where $E_i$ is the particle energy and $\theta_{ij}$ is the opening angle.
 Durham is used in exclusive mode, i.e. it stops after finding the desired number of jets.
@@ -145,16 +143,14 @@ Durham is used in exclusive mode, i.e. it stops after finding the desired number
 
 Hadron-collider anti-kt distance measure
 
-$$
-d_{ij} = \min(p_{T,i}^{-2}, p_{T,j}^{-2})
+$$d_{ij} = \min(p_{T,i}^{-2}, p_{T,j}^{-2})
 \frac{\Delta R_{ij}^2}{R^2},
 \qquad
-d_{iB} = p_{T,i}^{-2}
-$$
+d_{iB} = p_{T,i}^{-2}$$
 
 ---
 
-### Generalized $ e^+e^- $ anti-kt
+### Generalized $e^+e^-$ anti-kt
 
 As defined in [1], Section 4.5.
 
@@ -202,14 +198,10 @@ The jet energy and angular resolutions are parameterized using functional forms 
 The jet energy resolution is parameterized using one of two functional forms, depending on the jet type and analysis needs:
 
 **With confusion term**:
-$$
-\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus \frac{N}{E}  \oplus C
-$$
+$$\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus \frac{N}{E}  \oplus C$$
 
 **Without confusion term**:
-$$
-\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus C
-$$
+$$\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus C$$
 
 Where:
 - **S** (stochastic term): Represents the stochastic term proportional to $1/\sqrt{E}$, related to the statistical fluctuations in energy measurement
