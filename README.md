@@ -327,6 +327,8 @@ See [RESULTS.md](RESULTS.md) for the main results obtained with this framework a
 * Effective parallelization of analysis scripts - for example, running a separate job for each chunk of data.
 * At the moment, the jet clustering is done on-the-fly during the histogram making step. It would be better to
  pre-cluster the jets and store them in the output files, so that different analysis steps can be tested more quickly.
+* `src/histmaker_functions/functions.h` needs to be thoroughly cleaned up. Some of it has already been done and some methods 
+have been moved to `jet_tools.h` and `utils.h`.
 
 ## Advanced Usage
 
