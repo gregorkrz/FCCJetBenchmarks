@@ -1,4 +1,4 @@
-Main:numberOfEvents = 1
+Main:numberOfEvents = 50000
 Main:timesAllowErrors = 5
 
 Init:showChangedSettings = on
