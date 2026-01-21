@@ -66,21 +66,9 @@ set ExecutionPath {
   MissingET
 
   NeutrinoFilter
-  GenJetFinder
   GenMissingET
 
-  FastJetFinder
-  JetEnergyScale
-
-  GenJetFinderDurhamN6
-  FastJetFinderDurhamN6
   FastCaloJetFinderDurhamN6
-
-  JetFlavorAssociation
-
-  BTagging
-  CTagging
-  TauTagging
 
   TreeWriter
 }
@@ -969,20 +957,6 @@ module Merger GenMissingET {
 # Jet finder
 ############
 
-module FastJetFinder FastJetFinder {
-#  set InputArray Calorimeter/towers
-  set InputArray EFlowMerger/eflow
-
-  set OutputArray jets
-
-  # algorithm: 1 CDFJetClu, 2 MidPoint, 3 SIScone, 4 kt, 5 Cambridge/Aachen, 6 antikt
-  set JetAlgorithm 10
-  set ParameterR 1.5
-  set ParameterP -1.0
-  set JetPTMin 1.0
-
-
-}
 
 ##################
 # Jet Energy Scale
@@ -1098,18 +1072,12 @@ module TreeWriter TreeWriter {
     add Branch EFlowMerger/eflow ParticleFlowCandidate ParticleFlowCandidate
     add Branch Calorimeter/towers Tower Tower
 
-    add Branch ElectronEfficiency/electrons Electron Electron
-    add Branch MuonEfficiency/muons Muon Muon
-    add Branch PhotonEfficiency/photons Photon Photon
 
     add Branch JetEnergyScale/jets Jet Jet
     add Branch MissingET/momentum MissingET MissingET
 
     add Branch GenJetFinder/jets GenJet Jet
     add Branch GenMissingET/momentum GenMissingET MissingET
-
-    add Branch GenJetFinderDurhamN6/jets GenJetDurhamN4 Jet
-    add Branch FastJetFinderDurhamN6/jets JetDurhamN4 Jet
 
     add Branch FastCaloJetFinderDurhamN6/jets CaloJetDurham Jet
 
