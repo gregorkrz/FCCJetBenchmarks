@@ -32,14 +32,14 @@ for METHOD_DIR in "$INPUT_DIR"/*; do
 
     echo "Processing method: $METHOD_NAME"
 
-    fccanalysis plots src/plotting/debugging_plots.py -- \
-        --inputDir "$METHOD_DIR"
+    #fccanalysis plots src/plotting/debugging_plots.py -- \
+    #    --inputDir "$METHOD_DIR"
 
     python src/plotting/resolution_plots.py \
-        --inputDir "$METHOD_DIR"
+        --inputDir "$METHOD_DIR" --angles-only
 
-    python src/plotting/mass_plots.py \
-        --inputDir "$METHOD_DIR"
+    #python src/plotting/mass_plots.py \
+    #    --inputDir "$METHOD_DIR"
 
     echo "Finished $METHOD_NAME"
     echo "----------------------------------------"
@@ -55,5 +55,4 @@ python src/plotting/joint_plots.py --inputDir $INPUT_DIR --AK-comparison --energ
 # ------------------------------------------------------------------
 # Run final statistics command
 # ------------------------------------------------------------------
-echo "Running basic statistics on full input directory..."
 python src/plotting/print_basic_stats.py --inputDir "$INPUT_DIR" --all-folders

@@ -11,6 +11,7 @@ This script moves the .root files from outputX folders into per-process folders,
 
 Running:
 python scripts/organize_dataset_per_process.py --base PATH_TO_DATASET
+python scripts/organize_dataset_per_process.py --base /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260120/
 
 Optional flags:
     * --dry-run: Print what would happen without making any changes
@@ -49,11 +50,10 @@ def move_files(
         if not root_files:
             print(f"  - No .root files in {out_dir}, skipping deletion check.")
         for src in root_files:
-            process_name = src.stem  # name without .root
+            process_name = src.stem  # Name without .root
             dest_dir = base / process_name
             dest_dir_rel = dest_dir.relative_to(base)
             dest_path = dest_dir / f"{idx}.root"
-
             print(f"  - {src.name} -> {dest_dir_rel}/{idx}.root")
             if not dry_run:
                 dest_dir.mkdir(parents=True, exist_ok=True)
@@ -68,7 +68,6 @@ def move_files(
                             file=sys.stderr,
                         )
                         continue
-
                 # Move and rename
                 shutil.move(str(src), str(dest_path))
 

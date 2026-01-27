@@ -22,12 +22,12 @@ export APPTAINER_CACHEDIR=/sdf/scratch/atlas/gregork/apptainer_cache
 export APPTAINER_TMPDIR=/sdf/scratch/atlas/gregork/apptainer_tmp
 
 # Run the Python script
-singularity exec -B /sdf -B /cvmfs -B /fs --nv docker://gkrz/alma:v0 {command_to_run}
+singularity exec -B /sdf -B /cvmfs -B /fs --nv /sdf/scratch/atlas/gregork/apptainer_tmp/alma_v0.sif {command_to_run}
 """
 
-command = ".  /cvmfs/sw.hsf.org/key4hep/setup.sh -r 2025-05-29 && fccanalysis run --n-threads 1 src/histmaker.py -- \
-  --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20251114 \
-  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20251114_MatchingR03_20260301/{output_folder_name} \
+command = ".  /cvmfs/sw.hsf.org/key4hep/setup.sh -r 2025-05-29 && fccanalysis run --n-threads 10 src/histmaker.py -- \
+  --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260120 \
+  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20260120/{output_folder_name} \
   --jet-algorithm {jet_algo} --jet-matching-radius 0.3 "
 
 process_list = [
@@ -63,29 +63,33 @@ commands = {
     + " --ideal-matching",
 }
 
-# Commands for the e+e- anti-kt algorithm
-for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
-    radius_str = int(radius * 10)
-    if len(str(radius_str)) == 1:
-        radius_str = f"0{radius_str}"
-    command_name = f"AK{radius_str}"
-    commands[command_name] = command.format(
-        output_folder_name=f"PF_AntiKtR{radius_str}",
-        jet_algo=f"EEAK",
-    ) + " --AK-radius {}".format(radius)
-    output_folder_name[command_name] = f"PF_AntiKtR{radius_str}"
+if False: # toggle to submit AK jobs
+    commands = {}
+    # Commands for the e+e- anti-kt algorithm
+    for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
+        radius_str = int(radius * 10)
+        if len(str(radius_str)) == 1:
+            radius_str = f"0{radius_str}"
+        command_name = f"AK{radius_str}"
+        commands[command_name] = command.format(
+            output_folder_name=f"PF_AntiKtR{radius_str}",
+            jet_algo=f"EEAK",
+        ) + " --AK-radius {}".format(radius)
+        output_folder_name[command_name] = f"PF_AntiKtR{radius_str}"
+if False:
+    commands = {}
+    # Commands for the e+e- anti-kt algorithm with energy recovery
+    for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
+        radius_str = int(radius * 10)
+        if len(str(radius_str)) == 1:
+            radius_str = f"0{radius_str}"
+        command_name = f"e_recovery_AK{radius_str}"
+        commands[command_name] = command.format(
+            output_folder_name=f"PF_E_recovery_AntiKtR{radius_str}",
+            jet_algo=f"EEAK",
+        ) + " --AK-radius {} --energy-recovery".format(radius)
+        output_folder_name[command_name] = f"PF_E_recovery_AntiKtR{radius_str}"
 
-# Commands for the e+e- anti-kt algorithm with energy recovery
-for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
-    radius_str = int(radius * 10)
-    if len(str(radius_str)) == 1:
-        radius_str = f"0{radius_str}"
-    command_name = f"e_recovery_AK{radius_str}"
-    commands[command_name] = command.format(
-        output_folder_name=f"PF_E_recovery_AntiKtR{radius_str}",
-        jet_algo=f"EEAK",
-    ) + " --AK-radius {} --energy-recovery".format(radius)
-    output_folder_name[command_name] = f"PF_E_recovery_AntiKtR{radius_str}"
 
 error_logs_prefix = "/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/logs/"
 
@@ -100,7 +104,7 @@ for command_name in commands:
         stderr = error_logs_prefix + command_name + "_" + process + ".stderr"
         n_cpus = 10
         memory = 80000
-        time = "05:00:00"
+        time = "10:00:00"
         job_name = "{}_{}".format(command_name, process)
         cmd = commands[command_name] + " --only-dataset " + process
         # Now, save the slurm file into jobs/job_name.slurm
@@ -113,7 +117,7 @@ for command_name in commands:
             error_logs=stderr,
             command_to_run=f"/bin/sh -c '{cmd}'",
         )
-        output_filename = f"/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20251114_MatchingR03_20260301/{output_folder_name[command_name]}/{process}.root"
+        output_filename = f"/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20260120/{output_folder_name[command_name]}/{process}.root"
         if ONLY_RUN_UNFINISHED_JOBS and (
             os.path.exists(output_filename)
             and os.path.getsize(output_filename) > 10000
@@ -126,3 +130,4 @@ for command_name in commands:
         print("Saved slurm file", filename)
         if RUN_SLURM_SCRIPTS:
             os.system(f"sbatch {filename}")
+

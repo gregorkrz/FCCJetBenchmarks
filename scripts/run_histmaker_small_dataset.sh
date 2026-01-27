@@ -9,22 +9,22 @@ fccanalysis run src/histmaker.py -- \
   --jet-algorithm Durham
 
 # Durham, with ideal matching (for each GenJet, we match individually each MC particle to the corresponding reco particle)
-fccanalysis run src/histmaker.py -- \
-  --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/Tiny_IDEA_20251105/ \
-  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/Tiny_IDEA_20251105/Durham_IdealMatching \
-  --jet-algorithm Durham --ideal-matching
+#fccanalysis run src/histmaker.py -- \
+#  --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/Tiny_IDEA_20251105/ \
+#  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/Tiny_IDEA_20251105/Durham_IdealMatching \
+#  --jet-algorithm Durham --ideal-matching
 
 # Calo jets
 
-fccanalysis run src/histmaker.py -- \
-  --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/Tiny_IDEA_20251105/ \
-  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/Tiny_IDEA_20251105/CaloJetDurham \
-  --jet-algorithm CaloJetDurham
+#fccanalysis run src/histmaker.py -- \
+#  --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/Tiny_IDEA_20251105/ \
+#  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/Tiny_IDEA_20251105/CaloJetDurham \
+#  --jet-algorithm CaloJetDurham
 
 # Generalized e+e- anti-kt with R=0.8
 
-fccanalysis run src/histmaker.py -- \
-  --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/Tiny_IDEA_20251105/ \
-  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/Tiny_IDEA_20251105/ee_AK8 \
-  --jet-algorithm EEAK --AK-radius 0.8
+#fccanalysis run src/histmaker.py -- \
+#  --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/Tiny_IDEA_20251105/ \
+#  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/Tiny_IDEA_20251105/ee_AK8 \
+#  --jet-algorithm EEAK --AK-radius 0.8
 

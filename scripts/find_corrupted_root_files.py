@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-# python scripts/find_corrupted_root_files.py /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260112 --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260112/corrupted5.txt --check-only-missing
+# python scripts/find_corrupted_root_files.py /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260120 --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260120/corrupted5.txt --check-only-missing
 import argparse
 import os
 import sys
+import ROOT
 
 
 def parse_args() -> argparse.Namespace:
@@ -113,17 +114,22 @@ def main() -> int:
             print("Doing path: ", path)
             total += 1
             try:
-                with uproot.open(path) as f:
-                    tree_name = find_tree_name(f, args.tree)
-                    if not tree_name:
-                        corrupted.append((path, "no TTree found"))
-                        continue
-                    tree = f[tree_name]
-                    entries = tree.num_entries
-                    if entries != args.expected_events:
-                        corrupted.append(
-                            (path, f"events={entries} (expected {args.expected_events})")
-                        )
+                f = ROOT.TFile.Open(path)
+                assert not f.IsZombie(), "file is zombie"
+
+                assert f["events"].GetEntries() == args.expected_events, \
+                    f"events={f['events'].GetEntries()} (expected {args.expected_events})"
+               # with uproot.open(path) as f:
+               #     tree_name = find_tree_name(f, args.tree)
+               #     if not tree_name:
+               #         corrupted.append((path, "no TTree found"))
+               #         continue
+               #     tree = f[tree_name]
+               #     entries = tree.num_entries
+               #     if entries != args.expected_events:
+               #         corrupted.append(
+               #             (path, f"events={entries} (expected {args.expected_events})")
+               #         )
             except Exception as exc:
                 corrupted.append((path, f"failed to open: {exc.__class__.__name__}"))
 

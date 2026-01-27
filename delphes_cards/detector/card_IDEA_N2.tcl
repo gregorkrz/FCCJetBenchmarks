@@ -1047,10 +1047,7 @@ module TreeWriter TreeWriter {
     add Branch EFlowMerger/eflow ParticleFlowCandidate ParticleFlowCandidate
     add Branch Calorimeter/towers Tower Tower
 
-    add Branch JetEnergyScale/jets Jet Jet
     add Branch MissingET/momentum MissingET MissingET
-
-    add Branch GenJetFinder/jets GenJet Jet
     add Branch GenMissingET/momentum GenMissingET MissingET
 
 

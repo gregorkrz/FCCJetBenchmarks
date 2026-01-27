@@ -1073,10 +1073,8 @@ module TreeWriter TreeWriter {
     add Branch Calorimeter/towers Tower Tower
 
 
-    add Branch JetEnergyScale/jets Jet Jet
     add Branch MissingET/momentum MissingET MissingET
 
-    add Branch GenJetFinder/jets GenJet Jet
     add Branch GenMissingET/momentum GenMissingET MissingET
 
     add Branch FastCaloJetFinderDurhamN6/jets CaloJetDurham Jet
