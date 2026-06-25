@@ -299,8 +299,10 @@ python src/plotting/make_interactive_dashboard.py --data $PATH_TO_HISTOGRAMS/plo
   - Multi-select which methods (jet clustering algorithms / detectors), processes, and quantity (jet-part energy
     resolution, angular resolution, eta/cos(theta) scans) to overlay.
   - Pick custom colors per (method, process) curve (defaults: auto colors / `process_config.py` colors).
-  - Click on any point in the resolution plot to display the underlying histogram for that energy bin, with
-    vertical lines at the fitted low/high/MPV values.
+  - Click on any point in the resolution plot to toggle its underlying histogram on/off in a secondary plot,
+    with vertical lines at the fitted low/high/MPV values. Clicking multiple points overlays their histograms
+    (each in its own color, with an optional normalize toggle) so bins/methods/processes can be compared side
+    by side; a selection list lets you remove individual histograms or clear them all.
 
   `scripts/create_plots.sh` runs both of these steps automatically at the end of the pipeline.
 
