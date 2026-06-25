@@ -12,8 +12,10 @@ interactively explore the resolution grid:
   the colors from `process_config.py` with automatic fallback colors.
 - A main Plotly scatter+line plot of resolution vs. energy (or eta/costheta)
   for every selected combination, including the fitted curve.
-- Clicking on a data point shows the underlying per-bin histogram (and the
-  low/high/MPV fit values as vertical lines) in a secondary plot.
+- Clicking on a data point toggles its underlying per-bin histogram (and the
+  low/high/MPV fit values as vertical lines) on/off in a secondary plot, so
+  multiple histograms (e.g. from different methods/processes/energy bins)
+  can be compared side by side.
 
 Usage:
     python src/plotting/make_interactive_dashboard.py --inputDir $PATH_TO_HISTOGRAMS/plots/dashboard_data.json
@@ -45,7 +47,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .sel-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #mainPlot { width: 100%; height: 560px; }
   #histPlot { width: 100%; height: 360px; margin-top: 12px; }
-  #histHint { font-size: 12px; color: #777; padding: 4px 0; }
+  #histHint { font-size: 12px; color: #777; padding: 4px 0; display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+  #histSelectionList { font-size: 12px; margin-top: 4px; }
+  .hist-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+  .hist-row .swatch { width: 12px; height: 12px; border-radius: 2px; flex: 0 0 auto; }
+  .hist-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hist-row button { border: none; background: #eee; border-radius: 3px; cursor: pointer; font-size: 11px; padding: 1px 6px; }
+  #clearHistBtn { border: none; background: #eee; border-radius: 3px; cursor: pointer; font-size: 11px; padding: 2px 8px; }
 </style>
 </head>
 <body>
@@ -71,8 +79,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
   <div id="plots">
     <div id="mainPlot"></div>
-    <div id="histHint">Click on a data point above to show the histogram used to compute that resolution value.</div>
+    <div id="histHint">
+      <span>Click on a data point above to toggle its histogram on/off below. Click multiple points to compare them.</span>
+      <label style="white-space:nowrap;"><input type="checkbox" id="normalizeHistCheckbox" checked> normalize</label>
+      <button id="clearHistBtn">Clear all</button>
+    </div>
     <div id="histPlot"></div>
+    <div id="histSelectionList"></div>
   </div>
 </div>
 
@@ -259,6 +272,18 @@ function redraw() {
   }, {responsive: true});
 }
 
+// Selected histogram points, keyed by a stable id (survives redraws/re-coloring
+// of the main plot, unlike trace/point indices). Map(key -> {info, binIdx, color}).
+const selectedHistPoints = new Map();
+const HIST_AUTO_COLORS = [
+  "#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00",
+  "#a65628", "#f781bf", "#999999", "#66c2a5", "#fc8d62",
+];
+
+function histKey(info, binIdx) {
+  return `${info.method}||${info.process}||${info.quantity}||${binIdx}`;
+}
+
 function attachClickHandler() {
   const gd = document.getElementById("mainPlot");
   gd.on("plotly_click", function(data) {
@@ -267,62 +292,121 @@ function attachClickHandler() {
     const info = currentPointIndex[traceIdx];
     if (!info) return;
     const binIdx = pt.pointIndex;
-    showHistogram(info, binIdx);
+    toggleHistPoint(info, binIdx);
   });
 }
 
-function showHistogram(info, binIdx) {
-  const bins = (info.entry.bins || []);
-  const rec = bins[binIdx];
-  if (!rec) {
+function toggleHistPoint(info, binIdx) {
+  const key = histKey(info, binIdx);
+  if (selectedHistPoints.has(key)) {
+    selectedHistPoints.delete(key);
+  } else {
+    const color = HIST_AUTO_COLORS[selectedHistPoints.size % HIST_AUTO_COLORS.length];
+    selectedHistPoints.set(key, {info, binIdx, color});
+  }
+  redrawHistPlot();
+}
+
+function rebuildHistSelectionList() {
+  const container = document.getElementById("histSelectionList");
+  container.innerHTML = "";
+  selectedHistPoints.forEach((entry, key) => {
+    const {info, binIdx, color} = entry;
+    const rec = (info.entry.bins || [])[binIdx];
+    const row = document.createElement("div");
+    row.className = "hist-row";
+    const swatch = document.createElement("div");
+    swatch.className = "swatch";
+    swatch.style.background = color;
+    const label = `${DASHBOARD_DATA.methods[info.method].label} / ` +
+      `${(DASHBOARD_DATA.process_meta[info.process] || {}).label || info.process} ` +
+      `[${rec ? rec.lo : "?"}, ${rec ? rec.hi : "?"}]`;
+    const span = document.createElement("span");
+    span.textContent = label;
+    span.title = label;
+    const removeBtn = document.createElement("button");
+    removeBtn.textContent = "✕";
+    removeBtn.addEventListener("click", () => {
+      selectedHistPoints.delete(key);
+      redrawHistPlot();
+    });
+    row.appendChild(swatch);
+    row.appendChild(span);
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+  });
+}
+
+function redrawHistPlot() {
+  rebuildHistSelectionList();
+
+  if (selectedHistPoints.size === 0) {
     Plotly.purge("histPlot");
     return;
   }
-  const edges = rec.edges || [];
-  const y = rec.y || [];
-  const centers = [];
-  for (let i = 0; i < edges.length - 1; i++) {
-    centers.push(0.5 * (edges[i] + edges[i + 1]));
-  }
-  const widths = [];
-  for (let i = 0; i < edges.length - 1; i++) {
-    widths.push(edges[i + 1] - edges[i]);
-  }
 
-  const histTrace = {
-    x: centers,
-    y: y,
-    type: "bar",
-    width: widths,
-    marker: {color: "#888"},
-    name: "histogram",
-  };
+  const normalize = document.getElementById("normalizeHistCheckbox").checked;
+  const traces = [];
 
-  const yMax = Math.max(1, ...y);
-  const vline = (xval, name, dash) => ({
-    x: [xval, xval], y: [0, yMax], mode: "lines", type: "scatter",
-    name: name, line: {color: "red", dash: dash || "solid"},
+  selectedHistPoints.forEach(({info, binIdx, color}) => {
+    const rec = (info.entry.bins || [])[binIdx];
+    if (!rec) return;
+    const edges = rec.edges || [];
+    let y = rec.y || [];
+    const centers = [];
+    const widths = [];
+    for (let i = 0; i < edges.length - 1; i++) {
+      centers.push(0.5 * (edges[i] + edges[i + 1]));
+      widths.push(edges[i + 1] - edges[i]);
+    }
+    if (normalize) {
+      const yMaxRaw = Math.max(1e-12, ...y);
+      y = y.map(v => v / yMaxRaw);
+    }
+
+    const label = `${DASHBOARD_DATA.methods[info.method].label} / ` +
+      `${(DASHBOARD_DATA.process_meta[info.process] || {}).label || info.process} ` +
+      `[${rec.lo}, ${rec.hi}] GeV`;
+
+    traces.push({
+      x: centers,
+      y: y,
+      type: "bar",
+      width: widths,
+      marker: {color: color, opacity: 0.45},
+      name: label,
+      legendgroup: histKey(info, binIdx),
+    });
+
+    const yMax = normalize ? 1.0 : Math.max(1, ...y);
+    const vline = (xval, name, dash) => ({
+      x: [xval, xval], y: [0, yMax], mode: "lines", type: "scatter",
+      name: `${name} (${label})`, line: {color: color, dash: dash || "solid"},
+      legendgroup: histKey(info, binIdx), showlegend: false, hoverinfo: "skip",
+    });
+
+    if (rec.low !== undefined) traces.push(vline(rec.low, "low", "dot"));
+    if (rec.high !== undefined) traces.push(vline(rec.high, "high", "dot"));
+    if (rec.mpv !== undefined) traces.push(vline(rec.mpv, "MPV", "solid"));
   });
 
-  const traces = [histTrace];
-  if (rec.low !== undefined) traces.push(vline(rec.low, "low", "dot"));
-  if (rec.high !== undefined) traces.push(vline(rec.high, "high", "dot"));
-  if (rec.mpv !== undefined) traces.push(vline(rec.mpv, "MPV", "solid"));
-
-  const title = `${DASHBOARD_DATA.methods[info.method].label} / ` +
-    `${(DASHBOARD_DATA.process_meta[info.process] || {}).label || info.process} ` +
-    `[${rec.lo}, ${rec.hi}] GeV (N=${rec.n_jets || "?"})`;
-
   Plotly.react("histPlot", traces, {
-    title: title,
-    margin: {t: 40},
+    barmode: "overlay",
+    margin: {t: 20},
     showlegend: true,
+    yaxis: {title: normalize ? "normalized" : "count"},
   }, {responsive: true});
 }
 
 buildOptionList(methodOptions, methodNames, n => DASHBOARD_DATA.methods[n].label, redraw);
 buildOptionList(processOptions, processNames, n => (DASHBOARD_DATA.process_meta[n] || {}).label || n, redraw);
 quantitySelect.addEventListener("change", redraw);
+
+document.getElementById("clearHistBtn").addEventListener("click", () => {
+  selectedHistPoints.clear();
+  redrawHistPlot();
+});
+document.getElementById("normalizeHistCheckbox").addEventListener("change", redrawHistPlot);
 
 // Sensible defaults: select first method/process so the dashboard isn't empty on load.
 if (methodNames.length) methodOptions.querySelector("input[type=checkbox]").checked = true;
