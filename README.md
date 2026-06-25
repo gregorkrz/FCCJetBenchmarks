@@ -466,3 +466,7 @@ fccanalysis run src/histmaker.py -- \
 
 [5] Cacciari, Matteo, et al. “The Anti-K_t Jet Clustering Algorithm.” arXiv:0802.1189, arXiv, 21 Apr. 2008. arXiv.org, https://doi.org/10.48550/arXiv.0802.1189.
 
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
