@@ -239,7 +239,7 @@ Print the basic statistics of the produced datasets:
 python src/plotting/print_basic_stats.py --inputDir $PATH_TO_HISTOGRAMS
 ```
 
-The plotting scripts are split into three steps: 
+The plotting scripts are split into the following steps:
 
 * Basic debugging plots (placed in the subfolder `plots_debug`):
 
@@ -249,11 +249,25 @@ fccanalysis plots src/plotting/debugging_plots.py -- --inputDir $PATH_TO_HISTOGR
 
 This step is optional, but creates plots with basic statistics of the jets and events to quickly identify any issues.
 
+* **Resolution histogram extraction** (the only resolution-related step that needs ROOT). Reads the per-bin
+  histograms from the ROOT files in `METHOD_NAME` and dumps their raw content (bin edges + counts) to
+  `plots_resolution/resolution_histograms.pkl`:
 
-* energy resolution plots (placed in `plots_resolution`):
+```bash
+python src/plotting/extract_resolution_data.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
+```
+
+* **Resolution fitting and plotting** (placed in `plots_resolution`). This step is ROOT-free, only needs the
+  pickle produced above, runs entirely locally, and is cheap enough to re-run repeatedly while experimenting with
+  fitting algorithms:
+
 ```bash
 python src/plotting/resolution_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
 ```
+
+  In addition to the resolution PDFs and the `energy_fit_params_per_process.pkl` / `angle_fit_params_per_process.pkl`
+  files (consumed by `joint_plots.py`), this step also writes `plots_resolution/resolution_dashboard_data.pkl`,
+  a richer pickle containing per-energy-bin histograms and fit results, used by the interactive dashboard below.
 
 * Reconstructed $m_H$ plots (placed in `plots_mass`):
 ```bash
@@ -271,6 +285,54 @@ python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --AK-compariso
 
 ```
 
+* **Interactive resolution dashboard**. Once `extract_resolution_data.py` + `resolution_plots.py` have been run for
+  every method subfolder, consolidate all their `resolution_dashboard_data.pkl` files into a single JSON, then
+  generate a self-contained HTML dashboard from it:
+
+```bash
+python src/plotting/build_dashboard_data.py --inputDir $PATH_TO_HISTOGRAMS
+python src/plotting/make_interactive_dashboard.py --data $PATH_TO_HISTOGRAMS/plots/dashboard_data.json
+```
+
+  This produces `$PATH_TO_HISTOGRAMS/plots/dashboard.html`, a single HTML file (Plotly.js via CDN, vanilla JS, no
+  build step or server needed — just open it in a browser) where you can:
+  - Multi-select which methods (jet clustering algorithms / detectors), processes, and quantity (jet-part energy
+    resolution, angular resolution, eta/cos(theta) scans) to overlay.
+  - Pick custom colors per (method, process) curve (defaults: auto colors / `process_config.py` colors).
+  - Click on any point in the resolution plot to display the underlying histogram for that energy bin, with
+    vertical lines at the fitted low/high/MPV values.
+
+  `scripts/create_plots.sh` runs both of these steps automatically at the end of the pipeline.
+
+### Adding new resolution fitting algorithms
+
+`src/plotting/resolution_methods.py` is the single place where per-bin resolution-extraction methods and
+energy/angle-dependence fit models are registered, so new algorithms can be added without touching
+`resolution_plots.py`:
+
+* To add a new way of turning a histogram into a resolution number, write a function with signature
+  `(y, edges, wmin=0.7, wmax=1.2, **kwargs) -> (sigma, low, high, mpv)` (or `None` on failure) and register it:
+  ```python
+  def sigma_my_method(y, edges, wmin=0.7, wmax=1.2, **kwargs):
+      ...
+      return sigma, low, high, mpv
+  SIGMA_METHODS["my_method"] = sigma_my_method
+  ```
+  Then pass `sigma_method="my_method"` where `compute_resolution_for_process(...)` is called.
+
+* To add a new functional form for how the resolution depends on energy/angle, register it in
+  `RESOLUTION_MODELS`:
+  ```python
+  def my_model(E, a, b):
+      return a * E + b
+  RESOLUTION_MODELS["my_model"] = dict(func=my_model, p0=[1.0, 0.0],
+                                        bounds=([-np.inf, -np.inf], [np.inf, np.inf]))
+  ```
+  Then pass `model="my_model"` to `fit_resolution_model(...)`.
+
+`SIGMA_METHODS` and `RESOLUTION_MODELS` are plain dicts (with `add_sigma_method()` / `add_resolution_model()`
+helpers), so both can also be extended from a separate local script without modifying this repo.
+
 ### Output format
 
 The histmaker produces ROOT files containing histograms for each process. Each output directory (corresponding to a jet algorithm) contains:
@@ -279,10 +341,14 @@ The histmaker produces ROOT files containing histograms for each process. Each o
 
 The plotting scripts generate the following folders for each jet clustering method:
 - **`plots_debug/`**: Basic diagnostic plots (optional)
-- **`plots_resolution/`**: Jet energy and angular resolution plots
+- **`plots_resolution/`**: Jet energy and angular resolution plots, plus `resolution_histograms.pkl`
+  (raw per-bin histograms, from `extract_resolution_data.py`), `energy_fit_params_per_process.pkl` /
+  `angle_fit_params_per_process.pkl` (consumed by `joint_plots.py`), and `resolution_dashboard_data.pkl`
+  (consumed by `build_dashboard_data.py`)
 - **`plots_mass/`**: Reconstructed Higgs mass distributions
 
-In addition to this, the summary plots comparing different methods are generated in folder **`plots/`**.
+In addition to this, the summary plots comparing different methods, as well as the consolidated
+`dashboard_data.json` and the interactive `dashboard.html`, are generated in folder **`plots/`**.
 
 ## Project Structure
 
@@ -298,7 +364,11 @@ FCCJetBenchmarks/
 │   │   ├── event_level_statistics.py
 │   │   └── ...
 │   └── plotting/                 # Plotting scripts
-│       ├── resolution_plots.py   # Energy/angular resolution
+│       ├── extract_resolution_data.py  # Stage 1: ROOT -> raw histograms pickle
+│       ├── resolution_methods.py       # Pluggable sigma methods / fit models registry
+│       ├── resolution_plots.py         # Stage 2: histograms -> resolution fits/plots (ROOT-free)
+│       ├── build_dashboard_data.py     # Stage 3: consolidate all methods into one JSON
+│       ├── make_interactive_dashboard.py  # Stage 4: JSON -> self-contained HTML dashboard
 │       ├── mass_plots.py         # Higgs mass reconstruction
 │       ├── joint_plots.py        # Summary matrix plots
 │       └── ...

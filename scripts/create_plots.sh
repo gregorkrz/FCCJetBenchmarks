@@ -35,6 +35,9 @@ for METHOD_DIR in "$INPUT_DIR"/*; do
     #fccanalysis plots src/plotting/debugging_plots.py -- \
     #    --inputDir "$METHOD_DIR"
 
+    python src/plotting/extract_resolution_data.py \
+        --inputDir "$METHOD_DIR" --angles-only
+
     python src/plotting/resolution_plots.py \
         --inputDir "$METHOD_DIR" --angles-only
 
@@ -56,3 +59,10 @@ python src/plotting/joint_plots.py --inputDir $INPUT_DIR --AK-comparison --energ
 # Run final statistics command
 # ------------------------------------------------------------------
 python src/plotting/print_basic_stats.py --inputDir "$INPUT_DIR" --all-folders
+
+# ------------------------------------------------------------------
+# Build the interactive resolution dashboard (packages all methods'
+# resolution_dashboard_data.pkl into one JSON + self-contained HTML page)
+# ------------------------------------------------------------------
+python src/plotting/build_dashboard_data.py --inputDir "$INPUT_DIR"
+python src/plotting/make_interactive_dashboard.py --data "$INPUT_DIR/plots/dashboard_data.json"
