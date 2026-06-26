@@ -26,6 +26,15 @@ Numba may be installed locally with the following command:
 pip install numba -t .
 ```
 
+### Docker image
+
+`docker/Dockerfile` defines a base environment image, published to Docker Hub as
+[`gkrz/fccanalysis_env:latest`](https://hub.docker.com/r/gkrz/fccanalysis_env). The
+`.github/workflows/docker-publish.yml` GitHub Actions workflow automatically rebuilds and pushes this image
+whenever `docker/Dockerfile` changes on `main` (or can be triggered manually via "Run workflow"). It requires
+the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository secrets to be set under
+Settings → Secrets and variables → Actions.
+
 ## Quickstart
 
 0. **Set up the environment.** This repo uses the [FCCAnalyses framework](https://hep-fcc.github.io/FCCAnalyses/).
