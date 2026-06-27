@@ -16,6 +16,11 @@ interactively explore the resolution grid:
   low/high/MPV fit values as vertical lines) on/off in a secondary plot, so
   multiple histograms (e.g. from different methods/processes/energy bins)
   can be compared side by side.
+- One-click presets (mirroring the comparisons in joint_plots.py) for common
+  combinations: jet multiplicity (2/4/6 jets), clustering algorithm scan
+  (Durham vs. anti-kt radii), detector/matching comparison (PF vs. Calo vs.
+  ideal matching), and energy recovery on/off, each with sensible default
+  colors that can still be overridden afterwards.
 
 Usage:
     python src/plotting/make_interactive_dashboard.py --inputDir $PATH_TO_HISTOGRAMS/plots/dashboard_data.json
@@ -54,12 +59,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .hist-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hist-row button { border: none; background: #eee; border-radius: 3px; cursor: pointer; font-size: 11px; padding: 1px 6px; }
   #clearHistBtn { border: none; background: #eee; border-radius: 3px; cursor: pointer; font-size: 11px; padding: 2px 8px; }
+  #presetList { display: flex; flex-direction: column; gap: 6px; }
+  .preset-btn { text-align: left; border: 1px solid #ccc; background: #f5f5f9; border-radius: 4px;
+                padding: 6px 8px; cursor: pointer; font-size: 12px; }
+  .preset-btn:hover { background: #eaeaf5; }
+  .preset-btn .preset-desc { display: block; font-size: 10px; color: #777; font-weight: normal; margin-top: 2px; }
 </style>
 </head>
 <body>
 <h1>FCC Jet Resolution Dashboard</h1>
 <div id="layout">
   <div id="controls">
+    <fieldset>
+      <legend>Presets</legend>
+      <div id="presetList"></div>
+    </fieldset>
     <fieldset>
       <legend>Quantity</legend>
       <select id="quantitySelect" style="width: 100%;"></select>
@@ -179,6 +193,152 @@ function colorFor(method, process) {
   autoColorIdx += 1;
   selectedColors.set(k, c);
   return c;
+}
+
+// --------------------------------------------------------------------------
+// Presets: one-click combinations of methods/processes/colors mirroring the
+// comparisons already made in joint_plots.py (jet multiplicity, clustering
+// algo scan, detector/matching scan, energy-recovery on/off).
+// --------------------------------------------------------------------------
+
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = n => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const toHex = x => Math.round(255 * x).toString(16).padStart(2, "0");
+  return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
+}
+
+function antiKtRadius(methodName, recovery) {
+  const re = recovery ? /^PF_E_recovery_AntiKtR(\d+)$/ : /^PF_AntiKtR(\d+)$/;
+  const m = methodName.match(re);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function representativeProcess() {
+  return processNames.find(p => p.includes("qqqq")) || processNames[0];
+}
+
+function applyPreset(preset) {
+  const methodSet = new Set(preset.methods);
+  const processSet = new Set(preset.processes);
+  methodOptions.querySelectorAll("input[type=checkbox]").forEach(cb => {
+    cb.checked = methodSet.has(cb.value);
+  });
+  processOptions.querySelectorAll("input[type=checkbox]").forEach(cb => {
+    cb.checked = processSet.has(cb.value);
+  });
+  preset.methods.forEach(m => preset.processes.forEach(p => {
+    const color = preset.colorOf(m, p);
+    if (color) selectedColors.set(m + "||" + p, color);
+  }));
+  if (preset.quantity) quantitySelect.value = preset.quantity;
+  redraw();
+}
+
+function buildPresets() {
+  const presets = [];
+
+  // 1. Jet multiplicity comparison: one method, every process, using the
+  // existing process_config color families (teal=2 jets, magenta=4 jets, blue=6 jets).
+  const durhamLike = methodNames.find(m => m === "PF_Durham") || methodNames[0];
+  if (durhamLike) {
+    presets.push({
+      title: "2/4/6-jet processes",
+      desc: `All processes, ${DASHBOARD_DATA.methods[durhamLike].label} — colored by jet multiplicity`,
+      methods: [durhamLike],
+      processes: processNames.slice(),
+      colorOf: (m, p) => (DASHBOARD_DATA.process_meta[p] || {}).color,
+      quantity: "energy:_all",
+    });
+  }
+
+  // 2. Clustering algorithm scan: Durham + AntiKt radii (no energy recovery),
+  // single representative process, AntiKt getting darker purple with radius.
+  const akMethods = methodNames
+    .filter(m => antiKtRadius(m, false) !== null)
+    .sort((a, b) => antiKtRadius(a, false) - antiKtRadius(b, false));
+  if (durhamLike && akMethods.length) {
+    const proc = representativeProcess();
+    const methods = [durhamLike, ...akMethods];
+    const colorOf = (m, p) => {
+      if (m === durhamLike) return "#1f77b4";
+      const idx = akMethods.indexOf(m);
+      const lightness = 70 - (idx / Math.max(1, akMethods.length - 1)) * 45;
+      return hslToHex(270, 60, lightness);
+    };
+    presets.push({
+      title: "Clustering algorithm scan",
+      desc: `Durham vs. anti-kt radii, for ${(DASHBOARD_DATA.process_meta[proc] || {}).label || proc}`,
+      methods, processes: [proc], colorOf, quantity: "energy:_all",
+    });
+  }
+
+  // 3. Detector / matching comparison: PF vs Calo vs PF+IdealMatching.
+  const detectorMethods = ["PF_Durham", "CaloJets_Durham", "PF_Durham_IdealMatching"].filter(
+    m => methodNames.includes(m)
+  );
+  const detectorColors = {
+    PF_Durham: "#1f77b4", CaloJets_Durham: "#2ca02c", PF_Durham_IdealMatching: "#ff7f0e",
+  };
+  if (detectorMethods.length > 1) {
+    const proc = representativeProcess();
+    presets.push({
+      title: "Detector / matching comparison",
+      desc: `PF jets vs. Calo jets vs. ideal matching, for ${(DASHBOARD_DATA.process_meta[proc] || {}).label || proc}`,
+      methods: detectorMethods, processes: [proc],
+      colorOf: (m) => detectorColors[m],
+      quantity: "energy:_all",
+    });
+  }
+
+  // 4. Energy recovery on/off: pair up AntiKt radii available both with and
+  // without energy recovery; same hue per radius, recovery = saturated/dark,
+  // no recovery = light, so pairs are visually grouped.
+  const akNoRec = methodNames.filter(m => antiKtRadius(m, false) !== null);
+  const akRec = methodNames.filter(m => antiKtRadius(m, true) !== null);
+  const pairedRadii = akNoRec
+    .map(m => antiKtRadius(m, false))
+    .filter(r => akRec.some(m => antiKtRadius(m, true) === r))
+    .sort((a, b) => a - b)
+    .slice(0, 5);
+  if (pairedRadii.length) {
+    const proc = representativeProcess();
+    const methods = [];
+    const colorOf = (m) => {
+      const rNoRec = antiKtRadius(m, false);
+      const rRec = antiKtRadius(m, true);
+      const r = rNoRec !== null ? rNoRec : rRec;
+      const idx = pairedRadii.indexOf(r);
+      const hue = (idx * 360) / Math.max(1, pairedRadii.length);
+      return rNoRec !== null ? hslToHex(hue, 45, 75) : hslToHex(hue, 85, 40);
+    };
+    pairedRadii.forEach(r => {
+      const noRec = methodNames.find(m => antiKtRadius(m, false) === r);
+      const rec = methodNames.find(m => antiKtRadius(m, true) === r);
+      if (noRec) methods.push(noRec);
+      if (rec) methods.push(rec);
+    });
+    presets.push({
+      title: "Energy recovery on/off",
+      desc: `Anti-kt with vs. without energy recovery, by radius, for ${(DASHBOARD_DATA.process_meta[proc] || {}).label || proc}`,
+      methods, processes: [proc], colorOf, quantity: "energy:_all",
+    });
+  }
+
+  const container = document.getElementById("presetList");
+  container.innerHTML = "";
+  presets.forEach(preset => {
+    const btn = document.createElement("button");
+    btn.className = "preset-btn";
+    btn.innerHTML = `${preset.title}<span class="preset-desc">${preset.desc}</span>`;
+    btn.addEventListener("click", () => applyPreset(preset));
+    container.appendChild(btn);
+  });
+  if (presets.length === 0) {
+    container.innerHTML = '<span style="font-size:11px;color:#999;">No presets available for this dataset.</span>';
+  }
 }
 
 function rebuildSelectionList(combos) {
@@ -400,6 +560,7 @@ function redrawHistPlot() {
 
 buildOptionList(methodOptions, methodNames, n => DASHBOARD_DATA.methods[n].label, redraw);
 buildOptionList(processOptions, processNames, n => (DASHBOARD_DATA.process_meta[n] || {}).label || n, redraw);
+buildPresets();
 quantitySelect.addEventListener("change", redraw);
 
 document.getElementById("clearHistBtn").addEventListener("click", () => {

@@ -305,6 +305,11 @@ python src/plotting/make_interactive_dashboard.py --data $PATH_TO_HISTOGRAMS/plo
 
   This produces `$PATH_TO_HISTOGRAMS/plots/dashboard.html`, a single HTML file (Plotly.js via CDN, vanilla JS, no
   build step or server needed — just open it in a browser) where you can:
+  - One-click presets mirroring the comparisons already made in `joint_plots.py`: jet multiplicity (2/4/6 jets,
+    one method), clustering algorithm scan (Durham vs. anti-kt radii), detector/matching comparison (PF vs.
+    Calo vs. ideal matching), and energy recovery on/off (paired by anti-kt radius) — each with sensible
+    default colors (still overridable afterwards). Presets are computed from whatever methods/processes are
+    actually present, so they degrade gracefully if a comparison's methods aren't in your dataset.
   - Multi-select which methods (jet clustering algorithms / detectors), processes, and quantity (jet-part energy
     resolution, angular resolution, eta/cos(theta) scans) to overlay.
   - Pick custom colors per (method, process) curve (defaults: auto colors / `process_config.py` colors).
