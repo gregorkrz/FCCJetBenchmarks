@@ -45,9 +45,15 @@ source /cvmfs/sw.hsf.org/key4hep/setup.sh -r 2025-05-29
 
 1. **Run the histmaker:**
 Submit the slurm jobs for each process and each method using the following command:
-`python scripts/generate_analysis_jobs.py`.
+```bash
+python scripts/generate_analysis_jobs.py --input $PATH_TO_DATASET --output $PATH_TO_HISTOGRAMS
+```
 
-The script needs to be modified such that the dataset and output paths are correct.
+Useful flags:
+- `--algos ALGO1,ALGO2,...` — comma-separated list of clustering-algorithm families to generate jobs for. Choices: `durham` (PF_Durham), `calo` (CaloJets_Durham), `ideal` (PF_Durham_IdealMatching), `ak` (anti-kt radius scan), `ak-er` (anti-kt radius scan with energy recovery). Defaults to `durham,calo,ideal`.
+- `--logs PATH_TO_LOGS` — directory for SLURM stdout/stderr logs (default: `$PATH_TO_HISTOGRAMS/logs`).
+- `--no-submit` — write the SLURM job files but don't submit them with `sbatch`.
+- `--rerun-all` — submit all jobs, even those whose output ROOT file already exists (by default, jobs with an existing non-empty output file are skipped).
 
 The histmaker scripts produce a ROOT file with histograms for each process and each jet algorithm.
 

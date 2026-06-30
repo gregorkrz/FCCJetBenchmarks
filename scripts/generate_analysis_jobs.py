@@ -12,7 +12,23 @@ parser.add_argument("--no-submit", action="store_true",
                     help="Write SLURM job files but do not submit them with sbatch")
 parser.add_argument("--rerun-all", action="store_true",
                     help="Submit all jobs, even those whose output ROOT file already exists")
+parser.add_argument("--algos", default="durham,calo,ideal", metavar="ALGO1,ALGO2,...",
+                    help="Comma-separated list of algo families to generate jobs for. "
+                         "Choices: durham (PF_Durham), calo (CaloJets_Durham), "
+                         "ideal (PF_Durham_IdealMatching), ak (anti-kt radius scan), "
+                         "ak-er (anti-kt radius scan with energy recovery). "
+                         "Default: durham,calo,ideal")
 args = parser.parse_args()
+
+VALID_ALGOS = {"durham", "calo", "ideal", "ak", "ak-er"}
+selected_algos = {a.strip().lower() for a in args.algos.split(",") if a.strip()}
+unknown_algos = selected_algos - VALID_ALGOS
+if unknown_algos:
+    parser.error(
+        "Unknown --algos value(s): {}. Valid choices are: {}".format(
+            ", ".join(sorted(unknown_algos)), ", ".join(sorted(VALID_ALGOS))
+        )
+    )
 
 RUN_SLURM_SCRIPTS = not args.no_submit
 ONLY_RUN_UNFINISHED_JOBS = not args.rerun_all
@@ -64,45 +80,51 @@ process_list = [
     "p8_ee_ZH_vvbb_ecm240",
 ]
 
-output_folder_name = {
-    "Durham": "PF_Durham",
-    "CaloJets": "CaloJets_Durham",
-    "DurhamIdealMatching": "PF_Durham_IdealMatching",
-}
+output_folder_name = {}
+commands = {}
+
+AK_RADII = [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]
+
+
+def radius_to_str(radius):
+    radius_str = int(radius * 10)
+    if len(str(radius_str)) == 1:
+        radius_str = f"0{radius_str}"
+    return radius_str
 
 
 ## Commands for the main clustering algorithms: Durham, Durham with ideal matching, and CaloJets
-commands = {
-    "Durham": command.format(output_folder_name="PF_Durham", jet_algo="Durham"),
-    "CaloJets": command.format(
-        output_folder_name="CaloJets_Durham", jet_algo="CaloJetDurham"
-    ),
-    "DurhamIdealMatching": command.format(
-        output_folder_name="PF_Durham_IdealMatching", jet_algo="Durham"
-    )
-    + " --ideal-matching",
-}
+if "durham" in selected_algos:
+    commands["Durham"] = command.format(output_folder_name="PF_Durham", jet_algo="Durham")
+    output_folder_name["Durham"] = "PF_Durham"
 
-if False: # toggle to submit AK jobs
-    commands = {}
+if "calo" in selected_algos:
+    commands["CaloJets"] = command.format(
+        output_folder_name="CaloJets_Durham", jet_algo="CaloJetDurham"
+    )
+    output_folder_name["CaloJets"] = "CaloJets_Durham"
+
+if "ideal" in selected_algos:
+    commands["DurhamIdealMatching"] = command.format(
+        output_folder_name="PF_Durham_IdealMatching", jet_algo="Durham"
+    ) + " --ideal-matching"
+    output_folder_name["DurhamIdealMatching"] = "PF_Durham_IdealMatching"
+
+if "ak" in selected_algos:
     # Commands for the e+e- anti-kt algorithm
-    for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
-        radius_str = int(radius * 10)
-        if len(str(radius_str)) == 1:
-            radius_str = f"0{radius_str}"
+    for radius in AK_RADII:
+        radius_str = radius_to_str(radius)
         command_name = f"AK{radius_str}"
         commands[command_name] = command.format(
             output_folder_name=f"PF_AntiKtR{radius_str}",
             jet_algo=f"EEAK",
         ) + " --AK-radius {}".format(radius)
         output_folder_name[command_name] = f"PF_AntiKtR{radius_str}"
-if False:
-    commands = {}
+
+if "ak-er" in selected_algos:
     # Commands for the e+e- anti-kt algorithm with energy recovery
-    for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
-        radius_str = int(radius * 10)
-        if len(str(radius_str)) == 1:
-            radius_str = f"0{radius_str}"
+    for radius in AK_RADII:
+        radius_str = radius_to_str(radius)
         command_name = f"e_recovery_AK{radius_str}"
         commands[command_name] = command.format(
             output_folder_name=f"PF_E_recovery_AntiKtR{radius_str}",
