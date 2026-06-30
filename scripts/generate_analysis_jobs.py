@@ -1,7 +1,25 @@
+import argparse
 import os
 
-RUN_SLURM_SCRIPTS = True
-ONLY_RUN_UNFINISHED_JOBS = True
+parser = argparse.ArgumentParser(description="Generate and optionally submit SLURM jobs for the FCC jet histmaker.")
+parser.add_argument("--input", required=True, metavar="PATH_TO_DATASET",
+                    help="Root directory of the input dataset (the folder containing per-process subdirectories)")
+parser.add_argument("--output", required=True, metavar="PATH_TO_HISTOGRAMS",
+                    help="Root directory for histogram output (one subfolder per jet algorithm will be created here)")
+parser.add_argument("--logs", default=None, metavar="PATH_TO_LOGS",
+                    help="Directory for SLURM stdout/stderr logs (default: PATH_TO_HISTOGRAMS/logs)")
+parser.add_argument("--no-submit", action="store_true",
+                    help="Write SLURM job files but do not submit them with sbatch")
+parser.add_argument("--rerun-all", action="store_true",
+                    help="Submit all jobs, even those whose output ROOT file already exists")
+args = parser.parse_args()
+
+RUN_SLURM_SCRIPTS = not args.no_submit
+ONLY_RUN_UNFINISHED_JOBS = not args.rerun_all
+
+input_dir = args.input.rstrip("/")
+output_dir = args.output.rstrip("/")
+error_logs_prefix = (args.logs.rstrip("/") if args.logs else os.path.join(output_dir, "logs")) + "/"
 
 # If, it will check for jobs that don't have any output root files
 # (i.e., cancelled due to preemption) and re-run them again...
@@ -26,9 +44,11 @@ singularity exec -B /sdf -B /cvmfs -B /fs --nv /sdf/scratch/atlas/gregork/apptai
 """
 
 command = ".  /cvmfs/sw.hsf.org/key4hep/setup.sh -r 2025-05-29 && fccanalysis run --n-threads 10 src/histmaker.py -- \
-  --input /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260120 \
-  --output /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20260120/{output_folder_name} \
-  --jet-algorithm {jet_algo} --jet-matching-radius 0.3 "
+  --input {input_dir} \
+  --output {output_dir}/{output_folder_name} \
+  --jet-algorithm {jet_algo} --jet-matching-radius 0.3 ".format(
+    input_dir=input_dir, output_dir=output_dir, output_folder_name="{output_folder_name}", jet_algo="{jet_algo}"
+)
 
 process_list = [
     "p8_ee_ZH_6jet_ecm240",
@@ -91,7 +111,6 @@ if False:
         output_folder_name[command_name] = f"PF_E_recovery_AntiKtR{radius_str}"
 
 
-error_logs_prefix = "/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/logs/"
 
 # Make a dir "jobs" if it doesn't exist
 
@@ -117,7 +136,7 @@ for command_name in commands:
             error_logs=stderr,
             command_to_run=f"/bin/sh -c '{cmd}'",
         )
-        output_filename = f"/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/histmaker_output/IDEA_20260120/{output_folder_name[command_name]}/{process}.root"
+        output_filename = f"{output_dir}/{output_folder_name[command_name]}/{process}.root"
         if ONLY_RUN_UNFINISHED_JOBS and (
             os.path.exists(output_filename)
             and os.path.getsize(output_filename) > 10000
