@@ -36,13 +36,13 @@ for METHOD_DIR in "$INPUT_DIR"/*; do
     #    --inputDir "$METHOD_DIR"
 
     python src/plotting/extract_resolution_data.py \
-        --inputDir "$METHOD_DIR" --angles-only
+        --inputDir "$METHOD_DIR"
 
     python src/plotting/resolution_plots.py \
-        --inputDir "$METHOD_DIR" --angles-only
+        --inputDir "$METHOD_DIR"
 
-    #python src/plotting/mass_plots.py \
-    #    --inputDir "$METHOD_DIR"
+    python src/plotting/mass_plots.py \
+        --inputDir "$METHOD_DIR"
 
     echo "Finished $METHOD_NAME"
     echo "----------------------------------------"
