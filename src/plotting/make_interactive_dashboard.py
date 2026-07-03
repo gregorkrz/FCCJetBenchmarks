@@ -93,6 +93,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   table.stats-table th:first-child, table.stats-table td:first-child { text-align: left; }
   table.stats-table th { background: #f5f5f5; }
   table.stats-table td.best { font-weight: bold; }
+  .mini-btn { border: 1px solid #ccc; background: #f5f5f5; border-radius: 3px; padding: 2px 8px;
+              font-size: 11px; cursor: pointer; margin: 0 4px 4px 0; }
+  .mini-btn:hover { background: #eee; }
 </style>
 </head>
 <body>
@@ -115,17 +118,43 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <fieldset>
       <legend>Quantity</legend>
       <select id="quantitySelect" style="width: 100%;"></select>
+      <label class="opt" style="margin-top: 6px;">
+        <input type="checkbox" id="showFitCheckbox" checked> Show fit curve(s)
+      </label>
+      <label class="opt">
+        Fit model:
+        <select id="fitModelSelect" style="width: 100%;">
+          <option value="three_param">3-parameter (S/sqrt(E) + B + C/E)</option>
+          <option value="two_param">2-parameter (S/sqrt(E) + C)</option>
+        </select>
+      </label>
+      <label class="opt">
+        <input type="checkbox" id="showFullHistCheckbox"> Show full-resolution histograms (loads on demand)
+      </label>
+      <span id="fullHistStatus" style="font-size:11px;color:#a00;"></span>
     </fieldset>
     <fieldset>
       <legend>Methods</legend>
+      <div>
+        <button type="button" class="mini-btn" id="methodsAllBtn">All</button>
+        <button type="button" class="mini-btn" id="methodsNoneBtn">None</button>
+      </div>
       <div class="scroll-box" id="methodOptions"></div>
     </fieldset>
     <fieldset>
       <legend>Processes</legend>
+      <div>
+        <button type="button" class="mini-btn" id="processesAllBtn">All</button>
+        <button type="button" class="mini-btn" id="processesNoneBtn">None</button>
+        <button type="button" class="mini-btn" id="processes2jBtn">2-jet</button>
+        <button type="button" class="mini-btn" id="processes4jBtn">4-jet</button>
+        <button type="button" class="mini-btn" id="processes6jBtn">6-jet</button>
+      </div>
       <div class="scroll-box" id="processOptions"></div>
     </fieldset>
     <fieldset>
       <legend>Selected curves (click swatch to recolor)</legend>
+      <button type="button" class="mini-btn" id="autoColorsBtn">Auto colors</button>
       <div class="scroll-box" id="selection-list"></div>
     </fieldset>
   </div>
@@ -224,8 +253,10 @@ QUANTITIES.forEach(q => {
 const methodOptions = document.getElementById("methodOptions");
 const processOptions = document.getElementById("processOptions");
 
-function getEntry(method, process, quantity) {
-  const procData = DASHBOARD_DATA.methods[method].processes[process];
+function getEntry(method, process, quantity, root) {
+  root = root || DASHBOARD_DATA;
+  const methodData = root.methods && root.methods[method];
+  const procData = methodData && methodData.processes && methodData.processes[process];
   if (!procData) return null;
   if (quantity.kind === "energy") {
     return (procData.energy || {})[quantity.part] || null;
@@ -243,6 +274,42 @@ function getEntry(method, process, quantity) {
     return procData.mass || null;
   }
   return null;
+}
+
+// --------------------------------------------------------------------------
+// Full-resolution histograms: lazily fetched (not inlined) from
+// dashboard_data_full.json, written by build_dashboard_data.py next to
+// dashboard_data.json / dashboard.html. Only loaded once the user actually
+// asks to see a non-downsampled histogram.
+// --------------------------------------------------------------------------
+
+const FULL_DATA_URL = "dashboard_data_full.json";
+let fullDataCache = null;
+let fullDataPromise = null;
+
+function loadFullData() {
+  if (fullDataCache) return Promise.resolve(fullDataCache);
+  if (!fullDataPromise) {
+    fullDataPromise = fetch(FULL_DATA_URL)
+      .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(data => { fullDataCache = data; return data; })
+      .catch(err => { fullDataPromise = null; throw err; });
+  }
+  return fullDataPromise;
+}
+
+function showFullHistEnabled() {
+  return document.getElementById("showFullHistCheckbox").checked && !!fullDataCache;
+}
+
+// Given a light bin/definition record (with "edges"/"y") plus its resolved
+// path, return the full-resolution version if the user asked for it and it's
+// loaded, else the light (downsampled) version, unchanged.
+function resolveHistRecord(method, process, quantity, lightRec, pathInEntry) {
+  if (!showFullHistEnabled()) return lightRec;
+  const fullEntry = getEntry(method, process, quantity, fullDataCache);
+  const fullRec = fullEntry ? pathInEntry(fullEntry) : null;
+  return (fullRec && fullRec.edges && fullRec.edges.length) ? fullRec : lightRec;
 }
 
 function currentQuantity() {
@@ -397,7 +464,7 @@ function buildPresets() {
   // dotted = light-flavour), mirroring the presentation's "more B-hadron
   // content" row axis.
   if (durhamLike) {
-    const flavourColor = { "-": "#8c2d04", "--": "#fd8d3c", ":": "#fdd0a2" };
+    const flavourColor = { "-": "#08519c", "--": "#4292c6", ":": "#c6dbef" };
     const flavourRank = { "-": 0, "--": 1, ":": 2 };
     presets.push({
       title: "B-hadron content scan",
@@ -499,10 +566,32 @@ function massHistTrace(rec, color, name, dash) {
   };
 }
 
+function showFitEnabled() {
+  return document.getElementById("showFitCheckbox").checked;
+}
+
+function selectedFitModel() {
+  return document.getElementById("fitModelSelect").value;
+}
+
+// Resolve which fit to draw for an energy/angle entry, given the selected
+// fit-model dropdown. Prefers entry.fits[model] (both models pre-fit in
+// resolution_plots.py); falls back to the entry's own single model/popt for
+// older-shaped data that only has one fit.
+function resolveFit(entry) {
+  const model = selectedFitModel();
+  if (entry.fits && entry.fits[model]) return entry.fits[model];
+  if (entry.model === model && entry.fit_x && entry.fit_y) {
+    return {popt: entry.popt, fit_x: entry.fit_x, fit_y: entry.fit_y};
+  }
+  return null;
+}
+
 function renderMassPlot(combos) {
   const quantity = currentQuantity();
   const traces = [];
   const showAllDefs = combos.length === 1;
+  const showFit = showFitEnabled();
 
   combos.forEach(({method, process}) => {
     const entry = getEntry(method, process, quantity);
@@ -515,12 +604,14 @@ function renderMassPlot(combos) {
     defsToShow.forEach(def => {
       const rec = (entry.definitions || {})[def.key];
       if (!rec || !rec.edges || !rec.edges.length) return;
+      const histRec = resolveHistRecord(method, process, quantity, rec,
+        fullEntry => (fullEntry.definitions || {})[def.key]);
       const color = showAllDefs ? def.color : baseColor;
       const name = showAllDefs ? def.label : labelBase;
-      traces.push(massHistTrace(rec, color, name));
+      traces.push(massHistTrace(histRec, color, name));
     });
 
-    if (entry.fit && entry.fit.fit_x && entry.fit.fit_y) {
+    if (showFit && entry.fit && entry.fit.fit_x && entry.fit.fit_y) {
       traces.push({
         x: entry.fit.fit_x, y: entry.fit.fit_y, mode: "lines", type: "scatter",
         name: (showAllDefs ? "reco" : labelBase) + " (Gaussian fit)",
@@ -555,10 +646,12 @@ function redraw() {
   document.getElementById("histSelectionList").style.display = isMass ? "none" : "block";
   if (isMass) {
     renderMassPlot(combos);
+    saveStateToHash();
     return;
   }
 
   const traces = [];
+  const showFit = showFitEnabled();
 
   combos.forEach(({method, process}) => {
     const entry = getEntry(method, process, quantity);
@@ -584,10 +677,11 @@ function redraw() {
     });
     currentPointIndex.push({method, process, quantity: quantity.key, entry});
 
-    if (entry.fit_x && entry.fit_y) {
+    const fit = showFit ? resolveFit(entry) : null;
+    if (fit) {
       traces.push({
-        x: entry.fit_x,
-        y: entry.fit_y,
+        x: fit.fit_x,
+        y: fit.fit_y,
         mode: "lines",
         type: "scatter",
         name: labelBase + " (fit)",
@@ -610,6 +704,8 @@ function redraw() {
     margin: {t: 20},
     hovermode: "closest",
   }, {responsive: true});
+
+  saveStateToHash();
 }
 
 // Selected histogram points, keyed by a stable id (survives redraws/re-coloring
@@ -682,6 +778,7 @@ function redrawHistPlot() {
 
   if (selectedHistPoints.size === 0) {
     Plotly.purge("histPlot");
+    saveStateToHash();
     return;
   }
 
@@ -691,8 +788,13 @@ function redrawHistPlot() {
   selectedHistPoints.forEach(({info, binIdx, color}) => {
     const rec = (info.entry.bins || [])[binIdx];
     if (!rec) return;
-    const edges = rec.edges || [];
-    let y = rec.y || [];
+    // lo/hi/low/high/mpv metadata only exists on the light record - the full
+    // version (when loaded) only carries edges/y, so it's resolved separately
+    // and only used for the histogram shape itself.
+    const quantity = QUANTITIES.find(q => q.key === info.quantity);
+    const histRec = resolveHistRecord(info.method, info.process, quantity, rec, fullEntry => (fullEntry.bins || [])[binIdx]);
+    const edges = histRec.edges || [];
+    let y = histRec.y || [];
     const centers = [];
     const widths = [];
     for (let i = 0; i < edges.length - 1; i++) {
@@ -736,6 +838,112 @@ function redrawHistPlot() {
     showlegend: true,
     yaxis: {title: normalize ? "normalized" : "count"},
   }, {responsive: true});
+
+  saveStateToHash();
+}
+
+// --------------------------------------------------------------------------
+// URL state persistence: the full UI state (selected methods/processes,
+// quantity, fit controls, colors, drilled-down histogram points, active tab)
+// is base64url-encoded into the URL hash after every change, and restored
+// from it on load - so a specific dashboard view can be bookmarked or shared
+// as a link. Uses history.replaceState (not location.hash=...) so writing
+// the state doesn't spam browser history or fire a "hashchange" event for
+// our own writes.
+// --------------------------------------------------------------------------
+
+function encodeState(obj) {
+  const json = JSON.stringify(obj);
+  const b64 = btoa(unescape(encodeURIComponent(json)));
+  // base64url, no padding: a "clean" alphabet (A-Za-z0-9-_) that never needs
+  // percent-encoding inside a URL hash.
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeState(str) {
+  if (!str) return null;
+  try {
+    let b64 = str.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    const json = decodeURIComponent(escape(atob(b64)));
+    return JSON.parse(json);
+  } catch (e) {
+    console.warn("Could not decode dashboard state from URL:", e);
+    return null;
+  }
+}
+
+function captureState() {
+  const activeTabBtn = document.querySelector(".tab-btn.active");
+  return {
+    tab: activeTabBtn ? activeTabBtn.dataset.tab : "explorer",
+    quantity: quantitySelect.value,
+    fitModel: document.getElementById("fitModelSelect").value,
+    showFit: document.getElementById("showFitCheckbox").checked,
+    showFullHist: document.getElementById("showFullHistCheckbox").checked,
+    normalizeHist: document.getElementById("normalizeHistCheckbox").checked,
+    methods: getChecked(methodOptions),
+    processes: getChecked(processOptions),
+    colors: Object.fromEntries(selectedColors),
+    histPoints: Array.from(selectedHistPoints.values()).map(({info, binIdx}) => ({
+      method: info.method, process: info.process, quantity: info.quantity, binIdx,
+    })),
+  };
+}
+
+function applyState(state) {
+  if (!state) return;
+  if (state.quantity) quantitySelect.value = state.quantity;
+  if (state.fitModel) document.getElementById("fitModelSelect").value = state.fitModel;
+  if (typeof state.showFit === "boolean") document.getElementById("showFitCheckbox").checked = state.showFit;
+  if (typeof state.normalizeHist === "boolean") {
+    document.getElementById("normalizeHistCheckbox").checked = state.normalizeHist;
+  }
+
+  const methodSet = new Set(state.methods || []);
+  const processSet = new Set(state.processes || []);
+  methodOptions.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.checked = methodSet.has(cb.value); });
+  processOptions.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.checked = processSet.has(cb.value); });
+
+  selectedColors.clear();
+  Object.entries(state.colors || {}).forEach(([k, v]) => selectedColors.set(k, v));
+
+  selectedHistPoints.clear();
+  (state.histPoints || []).forEach(({method, process, quantity, binIdx}) => {
+    const q = QUANTITIES.find(qq => qq.key === quantity);
+    if (!q) return;
+    const entry = getEntry(method, process, q);
+    if (!entry) return;
+    const info = {method, process, quantity, entry};
+    const key = histKey(info, binIdx);
+    const color = HIST_AUTO_COLORS[selectedHistPoints.size % HIST_AUTO_COLORS.length];
+    selectedHistPoints.set(key, {info, binIdx, color});
+  });
+
+  if (state.tab === "statistics") {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+    const btn = Array.from(document.querySelectorAll(".tab-btn")).find(b => b.dataset.tab === "statistics");
+    if (btn) btn.classList.add("active");
+    document.getElementById("tab-statistics").classList.add("active");
+  }
+
+  const finish = () => { redraw(); redrawHistPlot(); };
+  if (state.showFullHist) {
+    document.getElementById("showFullHistCheckbox").checked = true;
+    loadFullData().then(finish).catch(err => {
+      console.warn("Could not restore full-resolution histogram view:", err);
+      document.getElementById("showFullHistCheckbox").checked = false;
+      finish();
+    });
+  } else {
+    finish();
+  }
+}
+
+function saveStateToHash() {
+  const encoded = encodeState(captureState());
+  history.replaceState(null, "", "#" + encoded);
 }
 
 // --------------------------------------------------------------------------
@@ -748,6 +956,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+    saveStateToHash();
   });
 });
 
@@ -799,7 +1008,8 @@ function buildStatsTable(container, columns, rows) {
       const isObj = cell !== null && typeof cell === "object";
       const cls = isObj && cell.best ? ' class="best"' : "";
       const text = isObj ? cell.text : cell;
-      html += `<td${cls}>${text === undefined || text === null ? "" : text}</td>`;
+      const title = isObj && cell.title ? ` title="${cell.title}"` : "";
+      html += `<td${cls}${title}>${text === undefined || text === null ? "" : text}</td>`;
     });
     html += "</tr>";
   });
@@ -825,7 +1035,13 @@ function renderFitCoefficientsTable() {
           return;
         }
         const entry = getEntry(method, process, q);
-        if (entry && entry.model && entry.popt) {
+        if (!entry) return;
+        if (entry.fits) {
+          Object.keys(entry.fits).forEach(model => {
+            const fit = entry.fits[model];
+            if (fit) rows.push([methodLabel, procLabel, q.label, model, formatFitParams(model, fit.popt)]);
+          });
+        } else if (entry.model && entry.popt) {
           rows.push([methodLabel, procLabel, q.label, entry.model, formatFitParams(entry.model, entry.popt)]);
         }
       });
@@ -841,11 +1057,16 @@ function renderCountAndPassRateTables() {
   processes.forEach(p => Object.keys(stats[p]).forEach(f => folderSet.add(f)));
   const folders = Array.from(folderSet).sort();
 
+  const compactFmt = new Intl.NumberFormat(undefined, {notation: "compact", maximumFractionDigits: 1});
   const countRows = processes.map(p => {
     const row = [p];
     folders.forEach(f => {
       const m = stats[p][f];
-      row.push(m ? `${Math.round(m.before)} / ${Math.round(m.after)}` : "");
+      if (!m) { row.push(""); return; }
+      row.push({
+        text: `${compactFmt.format(m.before)} / ${compactFmt.format(m.after)}`,
+        title: `${Math.round(m.before).toLocaleString()} / ${Math.round(m.after).toLocaleString()}`,
+      });
     });
     return row;
   });
@@ -873,6 +1094,27 @@ buildOptionList(methodOptions, methodNames, n => DASHBOARD_DATA.methods[n].label
 buildOptionList(processOptions, processNames, n => (DASHBOARD_DATA.process_meta[n] || {}).label || n, redraw);
 buildPresets();
 quantitySelect.addEventListener("change", redraw);
+document.getElementById("showFitCheckbox").addEventListener("change", redraw);
+document.getElementById("fitModelSelect").addEventListener("change", redraw);
+
+document.getElementById("showFullHistCheckbox").addEventListener("change", async (e) => {
+  const status = document.getElementById("fullHistStatus");
+  if (e.target.checked) {
+    status.textContent = "Loading full-resolution data...";
+    try {
+      await loadFullData();
+      status.textContent = "";
+    } catch (err) {
+      status.textContent = `Could not load ${FULL_DATA_URL} (${err.message}). Make sure it's next ` +
+        "to dashboard.html and both are served over http(s) - not opened via file://. Falling back " +
+        "to downsampled histograms.";
+      e.target.checked = false;
+      return;
+    }
+  }
+  redraw();
+  redrawHistPlot();
+});
 
 document.getElementById("clearHistBtn").addEventListener("click", () => {
   selectedHistPoints.clear();
@@ -880,13 +1122,69 @@ document.getElementById("clearHistBtn").addEventListener("click", () => {
 });
 document.getElementById("normalizeHistCheckbox").addEventListener("change", redrawHistPlot);
 
-// Sensible defaults: select first method/process so the dashboard isn't empty on load.
-if (methodNames.length) methodOptions.querySelector("input[type=checkbox]").checked = true;
-if (processNames.length) processOptions.querySelector("input[type=checkbox]").checked = true;
+// --------------------------------------------------------------------------
+// Bulk-selection convenience buttons (Methods/Processes All/None, jet-count
+// quick-select) and "Auto colors" to drop back to the default coloring
+// (process_config.py colors / auto-cycled fallback) for every combo.
+// --------------------------------------------------------------------------
+
+document.getElementById("methodsAllBtn").addEventListener("click", () => {
+  methodOptions.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.checked = true; });
+  redraw();
+});
+document.getElementById("methodsNoneBtn").addEventListener("click", () => {
+  methodOptions.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.checked = false; });
+  redraw();
+});
+document.getElementById("processesAllBtn").addEventListener("click", () => {
+  processOptions.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.checked = true; });
+  redraw();
+});
+document.getElementById("processesNoneBtn").addEventListener("click", () => {
+  processOptions.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.checked = false; });
+  redraw();
+});
+
+function selectProcessesByNJets(n) {
+  processOptions.querySelectorAll("input[type=checkbox]").forEach(cb => {
+    const meta = DASHBOARD_DATA.process_meta[cb.value] || {};
+    cb.checked = meta.n_jets === n;
+  });
+  redraw();
+}
+document.getElementById("processes2jBtn").addEventListener("click", () => selectProcessesByNJets(2));
+document.getElementById("processes4jBtn").addEventListener("click", () => selectProcessesByNJets(4));
+document.getElementById("processes6jBtn").addEventListener("click", () => selectProcessesByNJets(6));
+
+document.getElementById("autoColorsBtn").addEventListener("click", () => {
+  selectedColors.clear();
+  autoColorIdx = 0;
+  redraw();
+});
+
+// Restore state from the URL hash if present (bookmarked/shared link);
+// otherwise fall back to sensible defaults so the dashboard isn't empty.
+const initialState = decodeState(location.hash.replace(/^#/, ""));
+if (!initialState) {
+  if (methodNames.length) methodOptions.querySelector("input[type=checkbox]").checked = true;
+  if (processNames.length) processOptions.querySelector("input[type=checkbox]").checked = true;
+}
+
+// Restore state on browser back/forward navigation too. history.replaceState
+// (used by saveStateToHash) never fires "hashchange", so this only reacts to
+// actual user navigation, not our own writes.
+window.addEventListener("hashchange", () => {
+  const state = decodeState(location.hash.replace(/^#/, ""));
+  if (state) applyState(state);
+});
 
 Plotly.newPlot("mainPlot", [], {margin: {t: 20}}).then(() => {
   attachClickHandler();
-  redraw();
+  if (initialState) {
+    applyState(initialState);
+  } else {
+    redraw();
+  }
 });
 </script>
 </body>

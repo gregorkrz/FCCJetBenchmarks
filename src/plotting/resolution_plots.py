@@ -14,8 +14,14 @@ In addition to the PDF plots, this script writes:
   - energy_fit_params_per_process.pkl / angle_fit_params_per_process.pkl
     (consumed by joint_plots.py, format unchanged)
   - resolution_dashboard_data.pkl: a richer, self-contained dump (fit
-    points + per-bin histograms + fit curves) used by
-    build_dashboard_data.py to build the interactive HTML dashboard.
+    points + per-bin histograms + fit curves, both two_param and three_param
+    where applicable) used by build_dashboard_data.py to build the
+    interactive HTML dashboard.
+
+Each process's fit+plot block is wrapped in a try/except RuntimeError: if
+curve_fit fails to converge for one process, that process is skipped (with a
+warning) instead of crashing the whole script and losing
+resolution_dashboard_data.pkl for every other process in this method.
 
 Usage:
     python src/plotting/resolution_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
@@ -67,6 +73,18 @@ def print_params(popt):
     if len(popt) == 2:
         return f"A={round(popt[0], 2)} C={round(popt[1], 2)}"
     return f"A={round(popt[0], 2)} B={round(popt[2], 2)} C={round(popt[1], 2)}"
+
+
+def _safe_fit(mid_points, values, model, **kwargs):
+    """fit_resolution_model, but returns None (instead of raising) on failure -
+    used to fit both two_param and three_param so the dashboard can offer a
+    model dropdown without either fit's failure taking down the other."""
+    try:
+        xs, ys, popt, _pcov = fit_resolution_model(mid_points, values, model=model, **kwargs)
+    except RuntimeError as e:
+        print(f"⚠️ {model} fit failed: {e}")
+        return None
+    return {"popt": popt.tolist(), "fit_x": xs.tolist(), "fit_y": ys.tolist()}
 
 
 def compute_resolution_for_process(
@@ -136,6 +154,11 @@ def compute_resolution_for_process(
                     "n_jets": n_jets_in_bin,
                     "edges": edges_ds,
                     "y": y_ds,
+                    # Full-resolution copy, split back out into a separate lazily-loaded
+                    # file by build_dashboard_data.py (see _split_full_histograms there) -
+                    # not meant to end up inlined in dashboard.html itself.
+                    "edges_full": edges,
+                    "y_full": y_normalized,
                 }
             )
             print(
@@ -210,192 +233,212 @@ for jet_part in jet_parts_to_process:
                 2, 1, figsize=(10, 6), gridspec_kw={"height_ratios": [2, 1]}
             )
         for proc_idx, process in enumerate(sorted(list(processList.keys()))):
-            print("Process:", process)
-            proc_data = raw["data"][process]
-            if jet_part == "_all":
-                (E_theta, sigma_theta, fig_theta_hist, response_theta, _, results_theta, _, total_stats_theta, bins_theta) = compute_resolution_for_process(
-                    proc_data["angles"]["theta"],
-                    sigma_method=method,
-                    wmin=-0.05,
-                    wmax=0.05,
-                    divide_by_MPV=False,
-                )
-                xs_theta, ys_theta, popt_theta, pcov_theta = fit_resolution_model(
-                    E_theta, sigma_theta, model="two_param"
-                )
-                fit_storage_Theta[process] = (
-                    popt_theta, pcov_theta, xs_theta, ys_theta, E_theta, sigma_theta, results_theta,
-                )
-                if total_stats_theta >= 50000:
-                    fig_theta_hist.savefig(os.path.join(outputDir, "bins_theta_{}.pdf".format(process)))
-                else:
-                    print(f"Skipping bins_theta plot for process {process}: N={total_stats_theta} < 50000")
+            try:
+                print("Process:", process)
+                proc_data = raw["data"][process]
+                if jet_part == "_all":
+                    (E_theta, sigma_theta, fig_theta_hist, response_theta, _, results_theta, _, total_stats_theta, bins_theta) = compute_resolution_for_process(
+                        proc_data["angles"]["theta"],
+                        sigma_method=method,
+                        wmin=-0.05,
+                        wmax=0.05,
+                        divide_by_MPV=False,
+                    )
+                    xs_theta, ys_theta, popt_theta, pcov_theta = fit_resolution_model(
+                        E_theta, sigma_theta, model="two_param"
+                    )
+                    fit_storage_Theta[process] = (
+                        popt_theta, pcov_theta, xs_theta, ys_theta, E_theta, sigma_theta, results_theta,
+                    )
+                    if total_stats_theta >= 50000:
+                        fig_theta_hist.savefig(os.path.join(outputDir, "bins_theta_{}.pdf".format(process)))
+                    else:
+                        print(f"Skipping bins_theta plot for process {process}: N={total_stats_theta} < 50000")
 
-                (E_phi, sigma_phi, fig_phi_hist, response_phi, _, results_phi, _, total_stats_phi, bins_phi) = compute_resolution_for_process(
-                    proc_data["angles"]["phi"],
+                    (E_phi, sigma_phi, fig_phi_hist, response_phi, _, results_phi, _, total_stats_phi, bins_phi) = compute_resolution_for_process(
+                        proc_data["angles"]["phi"],
+                        sigma_method=method,
+                        wmin=-0.05,
+                        wmax=0.05,
+                        divide_by_MPV=False,
+                        x_label="$\Delta \phi = \phi_{reco} - \phi_{true}$ [rad]",
+                    )
+                    if total_stats_phi >= 50000:
+                        fig_phi_hist.savefig(os.path.join(outputDir, "bins_phi_{}.pdf".format(process)))
+                    else:
+                        print(f"Skipping bins_phi plot for process {process}: N={total_stats_phi} < 50000")
+                    clr = PROCESS_COLORS.get(process, f"C{proc_idx}")
+                    xs_phi, ys_phi, popt_phi, pcov_phi = fit_resolution_model(
+                        E_phi, sigma_phi, model="two_param"
+                    )
+                    fit_storage_Phi[process] = (
+                        popt_phi, pcov_phi, xs_phi, ys_phi, E_phi, sigma_phi, results_phi,
+                    )
+                    ax_theta[0].plot(E_theta, sigma_theta, "x", color=clr)
+                    ax_theta[0].plot(
+                        xs_theta, ys_theta, LINE_STYLES[process], color=clr,
+                        label=HUMAN_READABLE_PROCESS_NAMES[process] + f" {print_params(popt_theta)}",
+                    )
+                    ax_theta[1].plot(E_theta, response_theta, ".--", label=process, color=clr)
+                    ax_phi[0].plot(E_phi, sigma_phi, "x", color=clr)
+                    ax_phi[0].plot(
+                        xs_phi, ys_phi, LINE_STYLES[process], color=clr,
+                        label=HUMAN_READABLE_PROCESS_NAMES[process] + f" {print_params(popt_phi)}",
+                    )
+                    ax_phi[1].plot(E_phi, response_phi, ".--", label=process, color=clr)
+                    ax_phi[1].set_xlabel("$E_{true}$ [GeV]")
+                    ax_phi[1].set_ylabel("Response in $\phi$")
+
+                    ax_theta[0].set_xlabel("$E_{true}$ [GeV]")
+                    ax_theta[0].set_ylabel(r"$\sigma_{\theta}$ [rad]")
+                    ax_theta[1].set_xlabel("$E_{true}$ [GeV]")
+                    ax_theta[1].set_ylabel("Response in $\\theta$")
+                    ax_phi[0].set_xlabel("$E_{true}$ [GeV]")
+                    ax_phi[0].set_ylabel(r"$\sigma_{\phi}$ [rad]")
+
+                    (E_eta, sigma_eta, fig_eta_hist, response_eta, _, results_eta, _, total_stats_eta, bins_eta_recs) = compute_resolution_for_process(
+                        proc_data["angles"]["eta"],
+                        sigma_method=method,
+                        wmin=-0.05,
+                        wmax=0.05,
+                        divide_by_MPV=False,
+                        x_label="$\Delta \eta = \eta_{reco} - \eta_{true}$",
+                    )
+                    if total_stats_eta >= 50000:
+                        fig_eta_hist.savefig(os.path.join(outputDir, "bins_deltaEta_{}.pdf".format(process)))
+                    else:
+                        print(f"Skipping bins_eta plot for process {process}: N={total_stats_eta} < 50000")
+                    xs_eta, ys_eta, popt_eta, pcov_eta = fit_resolution_model(
+                        E_eta, sigma_eta, model="two_param"
+                    )
+                    fit_storage_Eta[process] = (
+                        popt_eta, pcov_eta, xs_eta, ys_eta, E_eta, sigma_eta, results_eta,
+                    )
+                    ax_eta[0].plot(E_eta, sigma_eta, "x", color=clr)
+                    ax_eta[0].plot(
+                        xs_eta, ys_eta, LINE_STYLES[process], color=clr,
+                        label=HUMAN_READABLE_PROCESS_NAMES[process] + f" {print_params(popt_eta)}",
+                    )
+                    ax_eta[1].plot(E_eta, response_eta, ".--", label=process, color=clr)
+                    ax_eta[0].set_xlabel("$E_{true}$ [GeV]")
+                    ax_eta[0].set_ylabel(r"$\sigma_{\eta}$")
+                    ax_eta[1].set_xlabel("$E_{true}$ [GeV]")
+                    ax_eta[1].set_ylabel("Response in $\eta$")
+
+                    dashboard_data[process]["angles"]["theta"] = {
+                        "mid_points": E_theta, "sigma": sigma_theta, "response": response_theta,
+                        "model": "two_param", "popt": popt_theta.tolist(), "fit_x": xs_theta.tolist(), "fit_y": ys_theta.tolist(),
+                        "fits": {
+                            "two_param": {"popt": popt_theta.tolist(), "fit_x": xs_theta.tolist(), "fit_y": ys_theta.tolist()},
+                            "three_param": _safe_fit(E_theta, sigma_theta, "three_param"),
+                        },
+                        "bins": bins_theta,
+                    }
+                    dashboard_data[process]["angles"]["phi"] = {
+                        "mid_points": E_phi, "sigma": sigma_phi, "response": response_phi,
+                        "model": "two_param", "popt": popt_phi.tolist(), "fit_x": xs_phi.tolist(), "fit_y": ys_phi.tolist(),
+                        "fits": {
+                            "two_param": {"popt": popt_phi.tolist(), "fit_x": xs_phi.tolist(), "fit_y": ys_phi.tolist()},
+                            "three_param": _safe_fit(E_phi, sigma_phi, "three_param"),
+                        },
+                        "bins": bins_phi,
+                    }
+                    dashboard_data[process]["angles"]["eta"] = {
+                        "mid_points": E_eta, "sigma": sigma_eta, "response": response_eta,
+                        "model": "two_param", "popt": popt_eta.tolist(), "fit_x": xs_eta.tolist(), "fit_y": ys_eta.tolist(),
+                        "fits": {
+                            "two_param": {"popt": popt_eta.tolist(), "fit_x": xs_eta.tolist(), "fit_y": ys_eta.tolist()},
+                            "three_param": _safe_fit(E_eta, sigma_eta, "three_param"),
+                        },
+                        "bins": bins_eta_recs,
+                    }
+                if args.angles_only:
+                    continue
+                (
+                    bin_mid_points, sigmaEoverE, fig_histograms, resp, bin_to_histograms,
+                    mpv_lo_hi, field_names, _, bin_records,
+                ) = compute_resolution_for_process(
+                    proc_data["energy"][jet_part],
                     sigma_method=method,
-                    wmin=-0.05,
-                    wmax=0.05,
-                    divide_by_MPV=False,
-                    x_label="$\Delta \phi = \phi_{reco} - \phi_{true}$ [rad]",
                 )
-                if total_stats_phi >= 50000:
-                    fig_phi_hist.savefig(os.path.join(outputDir, "bins_phi_{}.pdf".format(process)))
-                else:
-                    print(f"Skipping bins_phi plot for process {process}: N={total_stats_phi} < 50000")
+                if process not in method_low_high_mid_point_storage:
+                    method_low_high_mid_point_storage[process] = {}
+                if jet_part == "_all":
+                    method_low_high_mid_point_storage[process][method] = mpv_lo_hi
+                if method == "std68" and jet_part == "_all":
+                    bin_to_histograms_storage[process] = bin_to_histograms
+                    fig_histograms.tight_layout()
+                    fig_histograms.savefig(os.path.join(outputDir, "bins_{}_{}.pdf".format(process, method)))
+                if method == "std68" and jet_part == "_neutral":
+                    bin_to_histograms_storage_neutral[process] = bin_to_histograms
+                    fig_histograms.tight_layout()
+                    fig_histograms.savefig(os.path.join(outputDir, "bins_NEUTRAL_{}_{}.pdf".format(process, method)))
                 clr = PROCESS_COLORS.get(process, f"C{proc_idx}")
-                xs_phi, ys_phi, popt_phi, pcov_phi = fit_resolution_model(
-                    E_phi, sigma_phi, model="two_param"
+                if len(bin_mid_points) < 2:
+                    print(f"Not enough points to fit for process {process} using method {method}. Skipping.")
+                    continue
+                xs, ys, popt, pcov = fit_resolution_model(
+                    bin_mid_points, sigmaEoverE, model="three_param",
+                    bounds_override=([0.0, 0.005, 0.0], [np.inf, 0.04, np.inf]),
                 )
-                fit_storage_Phi[process] = (
-                    popt_phi, pcov_phi, xs_phi, ys_phi, E_phi, sigma_phi, results_phi,
+                print(f"Fitted parameters for {process} using {method}: {popt}")
+                if process not in process_popt_storage:
+                    process_popt_storage[process] = {}
+                process_popt_storage[process][method + jet_part] = (
+                    popt, pcov, xs, ys, bin_mid_points, sigmaEoverE, mpv_lo_hi, field_names,
                 )
-                ax_theta[0].plot(E_theta, sigma_theta, "x", color=clr)
-                ax_theta[0].plot(
-                    xs_theta, ys_theta, LINE_STYLES[process], color=clr,
-                    label=HUMAN_READABLE_PROCESS_NAMES[process] + f" {print_params(popt_theta)}",
-                )
-                ax_theta[1].plot(E_theta, response_theta, ".--", label=process, color=clr)
-                ax_phi[0].plot(E_phi, sigma_phi, "x", color=clr)
-                ax_phi[0].plot(
-                    xs_phi, ys_phi, LINE_STYLES[process], color=clr,
-                    label=HUMAN_READABLE_PROCESS_NAMES[process] + f" {print_params(popt_phi)}",
-                )
-                ax_phi[1].plot(E_phi, response_phi, ".--", label=process, color=clr)
-                ax_phi[1].set_xlabel("$E_{true}$ [GeV]")
-                ax_phi[1].set_ylabel("Response in $\phi$")
-
-                ax_theta[0].set_xlabel("$E_{true}$ [GeV]")
-                ax_theta[0].set_ylabel(r"$\sigma_{\theta}$ [rad]")
-                ax_theta[1].set_xlabel("$E_{true}$ [GeV]")
-                ax_theta[1].set_ylabel("Response in $\\theta$")
-                ax_phi[0].set_xlabel("$E_{true}$ [GeV]")
-                ax_phi[0].set_ylabel(r"$\sigma_{\phi}$ [rad]")
-
-                (E_eta, sigma_eta, fig_eta_hist, response_eta, _, results_eta, _, total_stats_eta, bins_eta_recs) = compute_resolution_for_process(
-                    proc_data["angles"]["eta"],
-                    sigma_method=method,
-                    wmin=-0.05,
-                    wmax=0.05,
-                    divide_by_MPV=False,
-                    x_label="$\Delta \eta = \eta_{reco} - \eta_{true}$",
-                )
-                if total_stats_eta >= 50000:
-                    fig_eta_hist.savefig(os.path.join(outputDir, "bins_deltaEta_{}.pdf".format(process)))
-                else:
-                    print(f"Skipping bins_eta plot for process {process}: N={total_stats_eta} < 50000")
-                xs_eta, ys_eta, popt_eta, pcov_eta = fit_resolution_model(
-                    E_eta, sigma_eta, model="two_param"
-                )
-                fit_storage_Eta[process] = (
-                    popt_eta, pcov_eta, xs_eta, ys_eta, E_eta, sigma_eta, results_eta,
-                )
-                ax_eta[0].plot(E_eta, sigma_eta, "x", color=clr)
-                ax_eta[0].plot(
-                    xs_eta, ys_eta, LINE_STYLES[process], color=clr,
-                    label=HUMAN_READABLE_PROCESS_NAMES[process] + f" {print_params(popt_eta)}",
-                )
-                ax_eta[1].plot(E_eta, response_eta, ".--", label=process, color=clr)
-                ax_eta[0].set_xlabel("$E_{true}$ [GeV]")
-                ax_eta[0].set_ylabel(r"$\sigma_{\eta}$")
-                ax_eta[1].set_xlabel("$E_{true}$ [GeV]")
-                ax_eta[1].set_ylabel("Response in $\eta$")
-
-                dashboard_data[process]["angles"]["theta"] = {
-                    "mid_points": E_theta, "sigma": sigma_theta, "response": response_theta,
-                    "model": "two_param", "popt": popt_theta.tolist(), "fit_x": xs_theta.tolist(), "fit_y": ys_theta.tolist(),
-                    "bins": bins_theta,
+                dashboard_data[process]["energy"][jet_part] = {
+                    "mid_points": bin_mid_points, "sigma_over_E": sigmaEoverE, "response": resp,
+                    "model": "three_param", "popt": popt.tolist(), "fit_x": xs.tolist(), "fit_y": ys.tolist(),
+                    "fits": {
+                        "three_param": {"popt": popt.tolist(), "fit_x": xs.tolist(), "fit_y": ys.tolist()},
+                        "two_param": _safe_fit(bin_mid_points, sigmaEoverE, "two_param"),
+                    },
+                    "bins": bin_records,
                 }
-                dashboard_data[process]["angles"]["phi"] = {
-                    "mid_points": E_phi, "sigma": sigma_phi, "response": response_phi,
-                    "model": "two_param", "popt": popt_phi.tolist(), "fit_x": xs_phi.tolist(), "fit_y": ys_phi.tolist(),
-                    "bins": bins_phi,
-                }
-                dashboard_data[process]["angles"]["eta"] = {
-                    "mid_points": E_eta, "sigma": sigma_eta, "response": response_eta,
-                    "model": "two_param", "popt": popt_eta.tolist(), "fit_x": xs_eta.tolist(), "fit_y": ys_eta.tolist(),
-                    "bins": bins_eta_recs,
-                }
-            if args.angles_only:
-                continue
-            (
-                bin_mid_points, sigmaEoverE, fig_histograms, resp, bin_to_histograms,
-                mpv_lo_hi, field_names, _, bin_records,
-            ) = compute_resolution_for_process(
-                proc_data["energy"][jet_part],
-                sigma_method=method,
-            )
-            if process not in method_low_high_mid_point_storage:
-                method_low_high_mid_point_storage[process] = {}
-            if jet_part == "_all":
-                method_low_high_mid_point_storage[process][method] = mpv_lo_hi
-            if method == "std68" and jet_part == "_all":
-                bin_to_histograms_storage[process] = bin_to_histograms
-                fig_histograms.tight_layout()
-                fig_histograms.savefig(os.path.join(outputDir, "bins_{}_{}.pdf".format(process, method)))
-            if method == "std68" and jet_part == "_neutral":
-                bin_to_histograms_storage_neutral[process] = bin_to_histograms
-                fig_histograms.tight_layout()
-                fig_histograms.savefig(os.path.join(outputDir, "bins_NEUTRAL_{}_{}.pdf".format(process, method)))
-            clr = PROCESS_COLORS.get(process, f"C{proc_idx}")
-            if len(bin_mid_points) < 2:
-                print(f"Not enough points to fit for process {process} using method {method}. Skipping.")
-                continue
-            xs, ys, popt, pcov = fit_resolution_model(
-                bin_mid_points, sigmaEoverE, model="three_param",
-                bounds_override=([0.0, 0.005, 0.0], [np.inf, 0.04, np.inf]),
-            )
-            print(f"Fitted parameters for {process} using {method}: {popt}")
-            if process not in process_popt_storage:
-                process_popt_storage[process] = {}
-            process_popt_storage[process][method + jet_part] = (
-                popt, pcov, xs, ys, bin_mid_points, sigmaEoverE, mpv_lo_hi, field_names,
-            )
-            dashboard_data[process]["energy"][jet_part] = {
-                "mid_points": bin_mid_points, "sigma_over_E": sigmaEoverE, "response": resp,
-                "model": "three_param", "popt": popt.tolist(), "fit_x": xs.tolist(), "fit_y": ys.tolist(),
-                "bins": bin_records,
-            }
-            ax[0].plot(bin_mid_points, sigmaEoverE, "x", color=clr)
-            ax[0].plot(
-                xs, ys, LINE_STYLES[process], color=clr,
-                label=HUMAN_READABLE_PROCESS_NAMES[process] + f" {print_params(popt)}",
-            )
-            ax[1].plot(bin_mid_points, resp, ".--", label=process, color=clr)
-            if method in method_to_color:
-                ax_resolution_per_process[proc_idx, 0].plot(
-                    bin_mid_points, sigmaEoverE, "x", label=method + f" {print_params(popt)}",
-                    color=method_to_color[method],
+                ax[0].plot(bin_mid_points, sigmaEoverE, "x", color=clr)
+                ax[0].plot(
+                    xs, ys, LINE_STYLES[process], color=clr,
+                    label=HUMAN_READABLE_PROCESS_NAMES[process] + f" {print_params(popt)}",
                 )
-                ax_resolution_per_process[proc_idx, 0].plot(xs, ys, LINE_STYLES[process], color=method_to_color[method])
-                ax_resolution_per_process[proc_idx, 0].set_title(HUMAN_READABLE_PROCESS_NAMES[process])
-                ax_resolution_per_process[proc_idx, 1].plot(
-                    bin_mid_points, resp, ".--", label=method, color=method_to_color[method],
-                )
-            if method == "std68":
-                if LINE_STYLES.get(process, "") == "-":
-                    row = 0
-                elif LINE_STYLES.get(process, "") == ":":
-                    row = 1
-                else:
-                    row = None
-                if row is not None:
-                    ax_resolution_per_process_Njets[row, 0].plot(
-                        bin_mid_points, sigmaEoverE, "x",
-                        label=HUMAN_READABLE_PROCESS_NAMES[process] + f" {print_params(popt)}", color=clr,
+                ax[1].plot(bin_mid_points, resp, ".--", label=process, color=clr)
+                if method in method_to_color:
+                    ax_resolution_per_process[proc_idx, 0].plot(
+                        bin_mid_points, sigmaEoverE, "x", label=method + f" {print_params(popt)}",
+                        color=method_to_color[method],
                     )
-                    ax_resolution_per_process_Njets[row, 0].plot(xs, ys, "--", color=clr)
-                    ax_resolution_per_process_Njets[row, 1].plot(
-                        bin_mid_points, resp, ".--", label=HUMAN_READABLE_PROCESS_NAMES[process], color=clr,
+                    ax_resolution_per_process[proc_idx, 0].plot(xs, ys, LINE_STYLES[process], color=method_to_color[method])
+                    ax_resolution_per_process[proc_idx, 0].set_title(HUMAN_READABLE_PROCESS_NAMES[process])
+                    ax_resolution_per_process[proc_idx, 1].plot(
+                        bin_mid_points, resp, ".--", label=method, color=method_to_color[method],
                     )
-            if not args.angles_only:
-                ax_resolution_per_process[proc_idx, 0].set_xlabel("$E_{true}$ [GeV]")
-                ax_resolution_per_process[proc_idx, 0].set_ylabel(r"$\sigma_E / E$")
-                ax_resolution_per_process[proc_idx, 1].set_xlabel("$E_{true}$ [GeV]")
-                ax_resolution_per_process[proc_idx, 1].set_ylabel("Response")
-                ax_resolution_per_process[proc_idx, 0].legend()
-                ax_resolution_per_process[proc_idx, 0].grid(True)
-                ax_resolution_per_process[proc_idx, 1].grid(True)
+                if method == "std68":
+                    if LINE_STYLES.get(process, "") == "-":
+                        row = 0
+                    elif LINE_STYLES.get(process, "") == ":":
+                        row = 1
+                    else:
+                        row = None
+                    if row is not None:
+                        ax_resolution_per_process_Njets[row, 0].plot(
+                            bin_mid_points, sigmaEoverE, "x",
+                            label=HUMAN_READABLE_PROCESS_NAMES[process] + f" {print_params(popt)}", color=clr,
+                        )
+                        ax_resolution_per_process_Njets[row, 0].plot(xs, ys, "--", color=clr)
+                        ax_resolution_per_process_Njets[row, 1].plot(
+                            bin_mid_points, resp, ".--", label=HUMAN_READABLE_PROCESS_NAMES[process], color=clr,
+                        )
+                if not args.angles_only:
+                    ax_resolution_per_process[proc_idx, 0].set_xlabel("$E_{true}$ [GeV]")
+                    ax_resolution_per_process[proc_idx, 0].set_ylabel(r"$\sigma_E / E$")
+                    ax_resolution_per_process[proc_idx, 1].set_xlabel("$E_{true}$ [GeV]")
+                    ax_resolution_per_process[proc_idx, 1].set_ylabel("Response")
+                    ax_resolution_per_process[proc_idx, 0].legend()
+                    ax_resolution_per_process[proc_idx, 0].grid(True)
+                    ax_resolution_per_process[proc_idx, 1].grid(True)
+            except RuntimeError as e:
+                print(f"\u26a0\ufe0f Skipping process {process} ({jet_part}) entirely due to a fit failure: {e}")
+                continue
         if not args.angles_only:
             ax_resolution_per_process_Njets[0, 0].set_title("Final state containing b-jets")
             ax_resolution_per_process_Njets[1, 0].set_title("Final state containing only light and gluon jets")

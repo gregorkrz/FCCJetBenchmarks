@@ -12,12 +12,12 @@ parser.add_argument("--no-submit", action="store_true",
                     help="Write SLURM job files but do not submit them with sbatch")
 parser.add_argument("--rerun-all", action="store_true",
                     help="Submit all jobs, even those whose output ROOT file already exists")
-parser.add_argument("--algos", default="durham,calo,ideal", metavar="ALGO1,ALGO2,...",
+parser.add_argument("--algos", default="durham,calo,ideal,ak,ak-er", metavar="ALGO1,ALGO2,...",
                     help="Comma-separated list of algo families to generate jobs for. "
                          "Choices: durham (PF_Durham), calo (CaloJets_Durham), "
                          "ideal (PF_Durham_IdealMatching), ak (anti-kt radius scan), "
                          "ak-er (anti-kt radius scan with energy recovery). "
-                         "Default: durham,calo,ideal")
+                         "Default: durham,calo,ideal,ak,ak-er (all algos)")
 args = parser.parse_args()
 
 VALID_ALGOS = {"durham", "calo", "ideal", "ak", "ak-er"}

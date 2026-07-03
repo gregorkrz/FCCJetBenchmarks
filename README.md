@@ -50,7 +50,7 @@ python scripts/generate_analysis_jobs.py --input $PATH_TO_DATASET --output $PATH
 ```
 
 Useful flags:
-- `--algos ALGO1,ALGO2,...` — comma-separated list of clustering-algorithm families to generate jobs for. Choices: `durham` (PF_Durham), `calo` (CaloJets_Durham), `ideal` (PF_Durham_IdealMatching), `ak` (anti-kt radius scan), `ak-er` (anti-kt radius scan with energy recovery). Defaults to `durham,calo,ideal`.
+- `--algos ALGO1,ALGO2,...` — comma-separated list of clustering-algorithm families to generate jobs for. Choices: `durham` (PF_Durham), `calo` (CaloJets_Durham), `ideal` (PF_Durham_IdealMatching), `ak` (anti-kt radius scan), `ak-er` (anti-kt radius scan with energy recovery). Defaults to `durham,calo,ideal,ak,ak-er` (all algos).
 - `--logs PATH_TO_LOGS` — directory for SLURM stdout/stderr logs (default: `$PATH_TO_HISTOGRAMS/logs`).
 - `--no-submit` — write the SLURM job files but don't submit them with `sbatch`.
 - `--rerun-all` — submit all jobs, even those whose output ROOT file already exists (by default, jobs with an existing non-empty output file are skipped).
@@ -317,8 +317,14 @@ python src/plotting/build_dashboard_data.py --inputDir $PATH_TO_HISTOGRAMS
 python src/plotting/make_interactive_dashboard.py --data $PATH_TO_HISTOGRAMS/plots/dashboard_data.json
 ```
 
-  This produces `$PATH_TO_HISTOGRAMS/plots/dashboard.html`, a single HTML file (Plotly.js via CDN, vanilla JS, no
-  build step or server needed — just open it in a browser). It has two tabs:
+  This produces two files under `$PATH_TO_HISTOGRAMS/plots/`:
+  - `dashboard.html`: a single HTML file (Plotly.js via CDN, vanilla JS, no build step or server needed — just
+    open it in a browser). Everything except the full-resolution histograms (see below) is inlined into this file.
+  - `dashboard_data_full.json`: the full-resolution (non-downsampled) histograms, kept out of dashboard.html and
+    fetched lazily, only if/when you ask to see them (see "Full vs. downsampled histograms" below). Keep it next
+    to dashboard.html.
+
+  dashboard.html has two tabs:
 
   **Explorer tab:**
   - Multi-select which methods (jet clustering algorithms / detectors), processes, and quantity (jet-part energy
@@ -332,18 +338,41 @@ python src/plotting/make_interactive_dashboard.py --data $PATH_TO_HISTOGRAMS/plo
     (colored by the `process_config.py` flavour convention), and two Higgs-mass presets (clustering algorithm scan,
     detector comparison) showing the mH peak shift directly. Presets are computed from whatever methods/processes
     are actually present, so they degrade gracefully if a comparison's methods aren't in your dataset.
-  - Pick custom colors per (method, process) curve (defaults: auto colors / `process_config.py` colors).
+  - Pick custom colors per (method, process) curve (defaults: auto colors / `process_config.py` colors), or click
+    "Auto colors" to drop any manual overrides back to those defaults.
+  - "All"/"None" buttons above the Methods and Processes lists, plus "2-jet"/"4-jet"/"6-jet" quick-select buttons
+    for Processes (using `process_config.py`'s `NUMBER_OF_JETS`).
+  - **"Show fit curve(s)"** checkbox to toggle the dashed fit overlay on/off, and a **"Fit model"** dropdown to
+    switch the energy/angular resolution fit between the 3-parameter (`S/sqrt(E) + B + C/E`) and 2-parameter
+    (`S/sqrt(E) + C`) forms — both are fit in `resolution_plots.py` up front (see `RESOLUTION_MODELS` in
+    `resolution_methods.py`), so switching models in the dropdown is instant, no refitting happens in the browser.
+    Currently `std68` (`resolution_plots.py`'s hardcoded `for method in ["std68"]:` loop) is the only sigma-
+    extraction method actually computed; this dropdown only switches the energy-dependence *fit form*, not the
+    per-bin sigma estimator.
   - Click on any point in the resolution plot to toggle its underlying histogram on/off in a secondary plot,
     with vertical lines at the fitted low/high/MPV values. Clicking multiple points overlays their histograms
     (each in its own color, with an optional normalize toggle) so bins/methods/processes can be compared side
     by side; a selection list lets you remove individual histograms or clear them all.
+  - **Full vs. downsampled histograms**: both the click-to-drill per-bin histograms and the Higgs mass histograms
+    are downsampled (capped at ~150-200 points) inside `dashboard.html` itself to keep the page small. Check
+    "Show full-resolution histograms" to lazily `fetch()` `dashboard_data_full.json` (only once, cached after
+    that) and see the actual full-resolution histograms (e.g. 5000 bins for the per-energy-bin `E_reco/E_true`
+    histograms) instead. This only works when dashboard.html and dashboard_data_full.json are served over
+    http(s) — opening dashboard.html directly via `file://` will usually have the fetch blocked by the browser's
+    CORS policy for local files; the checkbox shows an error and falls back to the downsampled view in that case.
   - A "Download raw JSON data" button re-offers the page's inlined data as a `dashboard_data.json` download, so
-    the underlying numbers can be pulled into another notebook/script without re-running the pipeline.
+    the underlying numbers can be pulled into another notebook/script without re-running the pipeline (this does
+    not include the full-resolution histograms - fetch `dashboard_data_full.json` separately for those).
+  - **The whole view is saved in the URL**: every selection (methods/processes, quantity, fit controls, colors,
+    drilled-down histogram points, active tab) is base64url-encoded into the URL hash after each change (via
+    `history.replaceState`, so it doesn't spam browser history or trigger a reload), and restored from it on
+    load. Bookmark or share the URL to reproduce the exact same view; browser back/forward also restores prior
+    views. No server involved - it's purely a `location.hash` round-trip.
 
   **Statistics tab:** three tables built from the same underlying data — fit coefficients (JER/angular S/N/C
-  parameters and the Higgs mass peak's fitted mean/sigma, for every method/process/quantity), raw event counts
-  (before/after the fully-matched filter), and the filter pass-rate table (same numbers as
-  `filter_pass_rate_table.md`, with the best value per row bolded).
+  parameters for both the two-param and three-param fits, and the Higgs mass peak's fitted mean/sigma, for every
+  method/process/quantity), raw event counts (before/after the fully-matched filter), and the filter pass-rate
+  table (same numbers as `filter_pass_rate_table.md`, with the best value per row bolded).
 
   `scripts/create_plots.sh` runs both of these steps automatically at the end of the pipeline. Pass `--html-only`
   to skip straight to these two steps (using pickles/JSON already on disk from a prior full run) when iterating on
@@ -352,6 +381,12 @@ python src/plotting/make_interactive_dashboard.py --data $PATH_TO_HISTOGRAMS/plo
 ```bash
 bash scripts/create_plots.sh --html-only $PATH_TO_HISTOGRAMS
 ```
+
+  Each process's fit is wrapped in a try/except in `resolution_plots.py`: if `curve_fit` fails to converge for one
+  process, only that process is skipped (with a warning printed) instead of crashing the whole script and losing
+  `resolution_dashboard_data.pkl` (and therefore that entire method) from the dashboard. If a method is missing
+  from the dashboard entirely, check whether `plots_resolution/resolution_dashboard_data.pkl` exists for it and
+  whether `resolution_plots.py`'s stdout/log mentions a skipped process.
 
 ### Adding new resolution fitting algorithms
 
@@ -404,11 +439,15 @@ The plotting scripts generate the following folders for each jet clustering meth
 - **`plots_resolution/`**: Jet energy and angular resolution plots, plus `resolution_histograms.pkl`
   (raw per-bin histograms, from `extract_resolution_data.py`), `energy_fit_params_per_process.pkl` /
   `angle_fit_params_per_process.pkl` (consumed by `joint_plots.py`), and `resolution_dashboard_data.pkl`
-  (consumed by `build_dashboard_data.py`)
-- **`plots_mass/`**: Reconstructed Higgs mass distributions
+  (consumed by `build_dashboard_data.py`; each bin/fit entry carries both a downsampled and a full-resolution
+  copy, the latter split back out into `dashboard_data_full.json` rather than inlined in the light JSON)
+- **`plots_mass/`**: Reconstructed Higgs mass distributions, plus `mass_dashboard_data.pkl` (downsampled +
+  full-resolution mH histograms and the Gaussian peak fit, also consumed by `build_dashboard_data.py`)
 
-In addition to this, the summary plots comparing different methods, as well as the consolidated
-`dashboard_data.json` and the interactive `dashboard.html`, are generated in folder **`plots/`**.
+In addition to this, `print_basic_stats.py --all-folders` writes `basic_stats_summary.json` at the top of
+`$PATH_TO_HISTOGRAMS` (raw event counts + pass rate per process/method), and the summary plots comparing
+different methods, as well as the consolidated `dashboard_data.json`, `dashboard_data_full.json`, and the
+interactive `dashboard.html`, are generated in folder **`plots/`**.
 
 ## Project Structure
 
