@@ -24,6 +24,8 @@ from src.process_config import (
 )
 
 DASHBOARD_PKL_RELPATH = os.path.join("plots_resolution", "resolution_dashboard_data.pkl")
+MASS_DASHBOARD_PKL_RELPATH = os.path.join("plots_mass", "mass_dashboard_data.pkl")
+STATS_JSON_RELPATH = "basic_stats_summary.json"
 
 
 def method_label(method_name):
@@ -77,6 +79,28 @@ def discover_methods(input_dir):
     return methods
 
 
+def load_mass_data(input_dir, method_name):
+    """Load a method's Higgs-mass dashboard pickle, if it exists.
+
+    Independent of discover_methods() so a method missing mass_plots.py
+    output still shows up in the dashboard, just without a mass quantity.
+    """
+    pkl_path = os.path.join(input_dir, method_name, MASS_DASHBOARD_PKL_RELPATH)
+    if not os.path.isfile(pkl_path):
+        return None
+    with open(pkl_path, "rb") as fh:
+        return pickle.load(fh)
+
+
+def load_stats(input_dir):
+    """Load the basic_stats_summary.json produced by print_basic_stats.py, if present."""
+    stats_path = os.path.join(input_dir, STATS_JSON_RELPATH)
+    if not os.path.isfile(stats_path):
+        return None
+    with open(stats_path) as fh:
+        return json.load(fh)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--inputDir", type=str, required=True)
@@ -102,6 +126,13 @@ def main():
         with open(pkl_path, "rb") as fh:
             data = pickle.load(fh)
         all_processes.update(data.keys())
+
+        mass_data = load_mass_data(args.inputDir, method_name)
+        if mass_data is not None:
+            print("  + Higgs mass dashboard data for method:", method_name)
+            for process, mass_entry in mass_data.items():
+                data.setdefault(process, {})["mass"] = mass_entry
+
         methods_out[method_name] = {
             "label": method_label(method_name),
             "processes": _sanitize(data),
@@ -115,9 +146,16 @@ def main():
             "line_style": LINE_STYLES.get(process, "-"),
         }
 
+    stats = load_stats(args.inputDir)
+    if stats is not None:
+        print("Loaded basic_stats_summary.json")
+    else:
+        print(f"No {STATS_JSON_RELPATH} found under {args.inputDir}; Statistics tab will be empty.")
+
     output = {
         "methods": methods_out,
         "process_meta": process_meta,
+        "stats": stats or {},
     }
 
     output_path = args.output or os.path.join(args.inputDir, "plots", "dashboard_data.json")

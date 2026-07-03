@@ -254,6 +254,10 @@ Print the basic statistics of the produced datasets:
 python src/plotting/print_basic_stats.py --inputDir $PATH_TO_HISTOGRAMS
 ```
 
+In addition to `filter_pass_rate_table.md` (and `_clean.md` with `--important-only`), this writes
+`basic_stats_summary.json` (raw event counts and pass rate, per process/method) at the top of `$PATH_TO_HISTOGRAMS`,
+consumed by `build_dashboard_data.py` for the dashboard's Statistics tab.
+
 The plotting scripts are split into the following steps:
 
 * Basic debugging plots (placed in the subfolder `plots_debug`):
@@ -289,6 +293,10 @@ python src/plotting/resolution_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NA
 python src/plotting/mass_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
 ```
 
+  In addition to the mH PDFs and `Higgs_mass_histograms_data.pkl`, this step also writes
+  `plots_mass/mass_dashboard_data.pkl`: downsampled reco/gen/GT/reco-GT-matched mH histograms plus a Gaussian fit
+  of the reco mH peak, used by the interactive dashboard below.
+
 * Matrix plots of different metrics on which all the physics processes are summarized:
 ```bash
 # Main results
@@ -300,9 +308,9 @@ python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --AK-compariso
 
 ```
 
-* **Interactive resolution dashboard**. Once `extract_resolution_data.py` + `resolution_plots.py` have been run for
-  every method subfolder, consolidate all their `resolution_dashboard_data.pkl` files into a single JSON, then
-  generate a self-contained HTML dashboard from it:
+* **Interactive dashboard**. Once `extract_resolution_data.py` + `resolution_plots.py` + `mass_plots.py` have been
+  run for every method subfolder and `print_basic_stats.py --all-folders` has been run once, consolidate all their
+  pickles/JSON into a single JSON, then generate a self-contained HTML dashboard from it:
 
 ```bash
 python src/plotting/build_dashboard_data.py --inputDir $PATH_TO_HISTOGRAMS
@@ -310,21 +318,40 @@ python src/plotting/make_interactive_dashboard.py --data $PATH_TO_HISTOGRAMS/plo
 ```
 
   This produces `$PATH_TO_HISTOGRAMS/plots/dashboard.html`, a single HTML file (Plotly.js via CDN, vanilla JS, no
-  build step or server needed — just open it in a browser) where you can:
-  - One-click presets mirroring the comparisons already made in `joint_plots.py`: jet multiplicity (2/4/6 jets,
-    one method), clustering algorithm scan (Durham vs. anti-kt radii), detector/matching comparison (PF vs.
-    Calo vs. ideal matching), and energy recovery on/off (paired by anti-kt radius) — each with sensible
-    default colors (still overridable afterwards). Presets are computed from whatever methods/processes are
-    actually present, so they degrade gracefully if a comparison's methods aren't in your dataset.
+  build step or server needed — just open it in a browser). It has two tabs:
+
+  **Explorer tab:**
   - Multi-select which methods (jet clustering algorithms / detectors), processes, and quantity (jet-part energy
-    resolution, angular resolution, eta/cos(theta) scans) to overlay.
+    resolution, angular resolution, eta/cos(theta) scans, or Higgs mass) to overlay.
+  - The Higgs mass quantity plots the reco mH histogram (with its Gaussian peak fit overlaid) for each selected
+    method/process; select a single (method, process) combination to instead see all four mH definitions overlaid
+    (reco / gen / GT / reco-GT matched), same as `plots_mass/log_Higgs_mass_reco_vs_gen.pdf`.
+  - One-click presets mirroring comparisons already made in `joint_plots.py` and in `presentation.pdf`: jet
+    multiplicity (2/4/6 jets), clustering algorithm scan (Durham vs. anti-kt radii), detector/matching comparison
+    (PF vs. Calo vs. ideal matching), energy recovery on/off (paired by anti-kt radius), B-hadron content scan
+    (colored by the `process_config.py` flavour convention), and two Higgs-mass presets (clustering algorithm scan,
+    detector comparison) showing the mH peak shift directly. Presets are computed from whatever methods/processes
+    are actually present, so they degrade gracefully if a comparison's methods aren't in your dataset.
   - Pick custom colors per (method, process) curve (defaults: auto colors / `process_config.py` colors).
   - Click on any point in the resolution plot to toggle its underlying histogram on/off in a secondary plot,
     with vertical lines at the fitted low/high/MPV values. Clicking multiple points overlays their histograms
     (each in its own color, with an optional normalize toggle) so bins/methods/processes can be compared side
     by side; a selection list lets you remove individual histograms or clear them all.
+  - A "Download raw JSON data" button re-offers the page's inlined data as a `dashboard_data.json` download, so
+    the underlying numbers can be pulled into another notebook/script without re-running the pipeline.
 
-  `scripts/create_plots.sh` runs both of these steps automatically at the end of the pipeline.
+  **Statistics tab:** three tables built from the same underlying data — fit coefficients (JER/angular S/N/C
+  parameters and the Higgs mass peak's fitted mean/sigma, for every method/process/quantity), raw event counts
+  (before/after the fully-matched filter), and the filter pass-rate table (same numbers as
+  `filter_pass_rate_table.md`, with the best value per row bolded).
+
+  `scripts/create_plots.sh` runs both of these steps automatically at the end of the pipeline. Pass `--html-only`
+  to skip straight to these two steps (using pickles/JSON already on disk from a prior full run) when iterating on
+  the dashboard itself:
+
+```bash
+bash scripts/create_plots.sh --html-only $PATH_TO_HISTOGRAMS
+```
 
 ### Adding new resolution fitting algorithms
 
@@ -354,6 +381,17 @@ energy/angle-dependence fit models are registered, so new algorithms can be adde
 
 `SIGMA_METHODS` and `RESOLUTION_MODELS` are plain dicts (with `add_sigma_method()` / `add_resolution_model()`
 helpers), so both can also be extended from a separate local script without modifying this repo.
+
+The same file also registers `PEAK_FIT_MODELS` (currently `"gaussian"` and `"dscb"`, a double-sided Crystal Ball),
+used by `fit_peak(x_vals, y_vals, model=..., window=...)` to fit the Higgs mass peak in `mass_plots.py`. Add a new
+mH fitting method the same way as above:
+```python
+def my_peak_model(x, ...params):
+    ...
+PEAK_FIT_MODELS["my_peak_model"] = dict(func=my_peak_model, n_params=...)
+```
+Then pass `model="my_peak_model"` to `fit_peak(...)`. The fitted `popt`/model name flow straight through to the
+dashboard's Statistics tab and the Higgs mass quantity's fit overlay, with no other code changes needed.
 
 ### Output format
 
@@ -404,6 +442,13 @@ FCCJetBenchmarks/
 
 
 ## Main results
+
+> [!TIP]
+> **[Open the live interactive dashboard](https://d197we12tlgfrq.cloudfront.net/dashboard.html)** — explore jet
+> energy/angular resolution and Higgs mass plots across every process and jet-clustering method, apply one-click
+> presets, and check the Statistics tab for fit coefficients, event counts, and filter pass rates. Rebuilt by
+> `scripts/create_plots.sh` (see [Interactive dashboard](#plotting-scripts) below); use `--html-only` to rebuild
+> just the dashboard after a full run.
 
 See [RESULTS.md](RESULTS.md) for the main results obtained with this framework and the provided dataset.
 

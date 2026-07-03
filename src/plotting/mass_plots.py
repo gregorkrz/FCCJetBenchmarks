@@ -10,8 +10,21 @@ from src.process_config import (
     LINE_STYLES,
     NUMBER_OF_JETS,
 )
+from src.plotting.resolution_methods import downsample_for_dashboard, fit_peak
 import pickle
 import argparse
+
+
+def _histogram_for_dashboard(x_vals, y_vals, max_points=200):
+    """Reconstruct bin edges from (uniform) bin centers, downsample, and
+    return a plain-list {"edges", "y"} dict in the same shape the dashboard's
+    per-bin histogram renderer already expects for resolution histograms."""
+    x_vals = np.asarray(x_vals, dtype=float)
+    y_vals = np.asarray(y_vals, dtype=float)
+    half_width = (x_vals[1] - x_vals[0]) / 2.0
+    edges = np.append(x_vals - half_width, x_vals[-1] + half_width)
+    y_ds, edges_ds = downsample_for_dashboard(y_vals, edges, max_points=max_points)
+    return {"edges": edges_ds.tolist(), "y": y_ds.tolist()}
 
 
 matplotlib.rcParams.update(
@@ -277,6 +290,7 @@ if len(root_files) == 1:
     axlog = np.array([axlog])
 
 process_to_mH_hist_plots = {}
+mass_dashboard_data = {}
 
 # Higgs mass histogram
 for i, fname in enumerate(sorted(root_files)):
@@ -390,6 +404,29 @@ for i, fname in enumerate(sorted(root_files)):
         "y_vals_gt_recomatched": y_vals_gt_recomatched,
     }
 
+    # Dashboard-friendly, downsampled version of the same 4 mH definitions,
+    # plus a Gaussian peak fit on the reco definition (the actual "reconstructed
+    # Higgs mass" metric). Consumed by build_dashboard_data.py.
+    mass_peak_fit = fit_peak(x_vals_reco, y_vals_reco, model="gaussian")
+    mass_dashboard_data[label] = {
+        "definitions": {
+            "reco": _histogram_for_dashboard(x_vals_reco, y_vals_reco),
+            "gen": _histogram_for_dashboard(x_vals_gen, y_vals_gen),
+            "gt": _histogram_for_dashboard(x_vals_gt, y_vals_gt),
+            "gt_recomatched": _histogram_for_dashboard(x_vals_gt_recomatched, y_vals_gt_recomatched),
+        },
+        "fit": (
+            {
+                "model": "gaussian",
+                "popt": mass_peak_fit[2].tolist(),
+                "fit_x": mass_peak_fit[0].tolist(),
+                "fit_y": mass_peak_fit[1].tolist(),
+            }
+            if mass_peak_fit is not None
+            else None
+        ),
+    }
+
     # Plot the step onto ax_mH_NJets based on NUMBER_OF_JETS
     njets = NUMBER_OF_JETS.get(label, None)
     if njets in [2, 4, 6]:
@@ -484,8 +521,11 @@ path_higgs_separate_by_njets = os.path.join(
     outputDir, "Higgs_mass_plots_sorted_per_N_jets.pdf"
 )
 path_Higgs_pkl = os.path.join(outputDir, "Higgs_mass_histograms_data.pkl")
+path_mass_dashboard_pkl = os.path.join(outputDir, "mass_dashboard_data.pkl")
 
 pickle.dump(process_to_mH_hist_plots, open(path_Higgs_pkl, "wb"))
+pickle.dump(mass_dashboard_data, open(path_mass_dashboard_pkl, "wb"))
+print("Saved mass dashboard data to:", path_mass_dashboard_pkl)
 
 for i in range(len(ax_mH_perprocess)):
     ax_mH_perprocess[i, 0].legend(title="q ∈ {u, d, s}", fontsize=11, title_fontsize=9)

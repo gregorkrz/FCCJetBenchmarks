@@ -27,7 +27,7 @@ import os
 from src.process_config import PROCESS_COLORS, HUMAN_READABLE_PROCESS_NAMES, LINE_STYLES
 import pickle
 import matplotlib
-from src.plotting.resolution_methods import SIGMA_METHODS, fit_resolution_model
+from src.plotting.resolution_methods import SIGMA_METHODS, fit_resolution_model, downsample_for_dashboard
 
 matplotlib.rcParams.update(
     {
@@ -67,23 +67,6 @@ def print_params(popt):
     if len(popt) == 2:
         return f"A={round(popt[0], 2)} C={round(popt[1], 2)}"
     return f"A={round(popt[0], 2)} B={round(popt[2], 2)} C={round(popt[1], 2)}"
-
-
-def downsample_for_dashboard(y, edges, max_points=150):
-    """Rebin (y, edges) for storage in the (small) dashboard data file.
-
-    Purely for visual display in the dashboard - not used for any
-    statistical computation, which always happens on the full-resolution
-    histogram loaded from resolution_histograms.pkl.
-    """
-    n = len(y)
-    if n <= max_points:
-        return y, edges
-    factor = int(np.ceil(n / max_points))
-    n_new = n // factor
-    y_ds = np.array([y[i * factor : (i + 1) * factor].sum() for i in range(n_new)])
-    edges_ds = np.array([edges[i * factor] for i in range(n_new)] + [edges[n_new * factor]])
-    return y_ds, edges_ds
 
 
 def compute_resolution_for_process(

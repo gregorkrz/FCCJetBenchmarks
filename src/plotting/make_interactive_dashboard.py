@@ -2,12 +2,16 @@
 
 Reads the consolidated `dashboard_data.json` produced by
 `build_dashboard_data.py` and writes a single self-contained HTML file
-(Plotly.js loaded from CDN, vanilla JS, no build step) that lets the user
-interactively explore the resolution grid:
+(Plotly.js loaded from CDN, vanilla JS, no build step) with two tabs:
 
+Explorer tab:
 - Multi-select filters for method (jet clustering algo / detector config),
   process, and quantity (jet-part energy resolution, angular resolution,
-  eta/cos(theta) scans).
+  eta/cos(theta) scans, or Higgs mass).
+- The Higgs mass quantity plots the reco mH histogram (with its Gaussian
+  peak fit) per selected method/process, or all four mH definitions
+  (reco/gen/GT/reco-GT matched) overlaid when a single combination is
+  selected.
 - A color picker per selected (method, process) combination, defaulting to
   the colors from `process_config.py` with automatic fallback colors.
 - A main Plotly scatter+line plot of resolution vs. energy (or eta/costheta)
@@ -16,11 +20,18 @@ interactively explore the resolution grid:
   low/high/MPV fit values as vertical lines) on/off in a secondary plot, so
   multiple histograms (e.g. from different methods/processes/energy bins)
   can be compared side by side.
-- One-click presets (mirroring the comparisons in joint_plots.py) for common
-  combinations: jet multiplicity (2/4/6 jets), clustering algorithm scan
-  (Durham vs. anti-kt radii), detector/matching comparison (PF vs. Calo vs.
-  ideal matching), and energy recovery on/off, each with sensible default
-  colors that can still be overridden afterwards.
+- One-click presets (mirroring the comparisons in joint_plots.py and
+  presentation.pdf) for common combinations: jet multiplicity (2/4/6 jets),
+  clustering algorithm scan (Durham vs. anti-kt radii), detector/matching
+  comparison (PF vs. Calo vs. ideal matching), energy recovery on/off,
+  B-hadron content scan, and two Higgs-mass peak comparisons (clustering
+  algorithm scan, detector comparison) — each with sensible default colors
+  that can still be overridden afterwards.
+- A "Download raw JSON data" button that re-offers the page's inlined
+  DASHBOARD_DATA as a downloadable dashboard_data.json.
+
+Statistics tab: fit coefficients (JER/angular + Higgs mass peak), raw event
+counts, and filter pass rates, one table each, built from the same data.
 
 Usage:
     python src/plotting/make_interactive_dashboard.py --inputDir $PATH_TO_HISTOGRAMS/plots/dashboard_data.json
@@ -64,10 +75,37 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 padding: 6px 8px; cursor: pointer; font-size: 12px; }
   .preset-btn:hover { background: #eaeaf5; }
   .preset-btn .preset-desc { display: block; font-size: 10px; color: #777; font-weight: normal; margin-top: 2px; }
+  #header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  #downloadJsonBtn { border: 1px solid #ccc; background: #fff; border-radius: 4px; padding: 6px 10px;
+                     cursor: pointer; font-size: 12px; white-space: nowrap; }
+  #downloadJsonBtn:hover { background: #eee; }
+  #tabBar { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #ccc; }
+  .tab-btn { border: 1px solid #ccc; border-bottom: none; background: #eee; border-radius: 6px 6px 0 0;
+             padding: 8px 16px; cursor: pointer; font-size: 13px; position: relative; top: 1px; }
+  .tab-btn.active { background: #fff; font-weight: bold; border-bottom: 1px solid #fff; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .stats-section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 12px; margin-bottom: 16px; }
+  .stats-section h2 { font-size: 15px; margin: 0 0 8px 0; }
+  .stats-table-wrap { overflow-x: auto; }
+  table.stats-table { border-collapse: collapse; font-size: 12px; width: 100%; }
+  table.stats-table th, table.stats-table td { border: 1px solid #ddd; padding: 4px 8px; text-align: right; white-space: nowrap; }
+  table.stats-table th:first-child, table.stats-table td:first-child { text-align: left; }
+  table.stats-table th { background: #f5f5f5; }
+  table.stats-table td.best { font-weight: bold; }
 </style>
 </head>
 <body>
-<h1>FCC Jet Resolution Dashboard</h1>
+<div id="header-row">
+  <h1>FCC Jet Resolution Dashboard</h1>
+  <button id="downloadJsonBtn">Download raw JSON data</button>
+</div>
+<div id="tabBar">
+  <button class="tab-btn active" data-tab="explorer">Explorer</button>
+  <button class="tab-btn" data-tab="statistics">Statistics</button>
+</div>
+
+<div id="tab-explorer" class="tab-content active">
 <div id="layout">
   <div id="controls">
     <fieldset>
@@ -102,6 +140,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div id="histSelectionList"></div>
   </div>
 </div>
+</div>
+
+<div id="tab-statistics" class="tab-content">
+  <div class="stats-section">
+    <h2>Fit coefficients</h2>
+    <div class="stats-table-wrap" id="fitCoeffTable"></div>
+  </div>
+  <div class="stats-section">
+    <h2>Event counts (before / after the fully-matched filter)</h2>
+    <div class="stats-table-wrap" id="eventCountTable"></div>
+  </div>
+  <div class="stats-section">
+    <h2>Filter pass rates</h2>
+    <div class="stats-table-wrap" id="passRateTable"></div>
+  </div>
+</div>
 
 <script>
 const DASHBOARD_DATA = __DASHBOARD_DATA_JSON__;
@@ -116,6 +170,14 @@ const QUANTITIES = [
   {key: "angle:eta", label: "Angular resolution (eta)", kind: "angle", part: "eta"},
   {key: "eta_scan", label: "Energy resolution vs. eta", kind: "eta_scan", part: null},
   {key: "costheta_scan", label: "Energy resolution vs. cos(theta)", kind: "costheta_scan", part: null},
+  {key: "mass", label: "Higgs mass (reco / gen / GT / reco-GT matched)", kind: "mass", part: null},
+];
+
+const MASS_DEFINITIONS = [
+  {key: "reco", label: "reco", color: "#1f77b4"},
+  {key: "gen", label: "gen", color: "#ff7f0e"},
+  {key: "gt", label: "GT", color: "#2ca02c"},
+  {key: "gt_recomatched", label: "reco-GT matched", color: "#d62728"},
 ];
 
 const AUTO_COLORS = [
@@ -176,6 +238,9 @@ function getEntry(method, process, quantity) {
   }
   if (quantity.kind === "costheta_scan") {
     return procData.costheta_scan || null;
+  }
+  if (quantity.kind === "mass") {
+    return procData.mass || null;
   }
   return null;
 }
@@ -327,6 +392,60 @@ function buildPresets() {
     });
   }
 
+  // 5. B-hadron content scan: single method, all processes, colored by the
+  // existing LINE_STYLES convention (full = b-jets, dashed = mixed/gluons,
+  // dotted = light-flavour), mirroring the presentation's "more B-hadron
+  // content" row axis.
+  if (durhamLike) {
+    const flavourColor = { "-": "#8c2d04", "--": "#fd8d3c", ":": "#fdd0a2" };
+    const flavourRank = { "-": 0, "--": 1, ":": 2 };
+    presets.push({
+      title: "B-hadron content scan",
+      desc: `All processes, ${DASHBOARD_DATA.methods[durhamLike].label} — colored by B-hadron content (dark = b-jets, light = light-flavour)`,
+      methods: [durhamLike],
+      processes: processNames.slice().sort((a, b) => {
+        const la = (DASHBOARD_DATA.process_meta[a] || {}).line_style || "-";
+        const lb = (DASHBOARD_DATA.process_meta[b] || {}).line_style || "-";
+        return (flavourRank[la] ?? 1) - (flavourRank[lb] ?? 1);
+      }),
+      colorOf: (m, p) => {
+        const ls = (DASHBOARD_DATA.process_meta[p] || {}).line_style || "-";
+        return flavourColor[ls] || "#999999";
+      },
+      quantity: "energy:_all",
+    });
+  }
+
+  // 6. Clustering algorithm: Higgs mass comparison (Durham vs. anti-kt radii),
+  // showing under/over-clustering directly in the mH peak (mirrors slides 19-21).
+  if (durhamLike && akMethods.length) {
+    const proc = representativeProcess();
+    const methods = [durhamLike, ...akMethods];
+    const colorOf = (m) => {
+      if (m === durhamLike) return "#1f77b4";
+      const idx = akMethods.indexOf(m);
+      const lightness = 70 - (idx / Math.max(1, akMethods.length - 1)) * 45;
+      return hslToHex(270, 60, lightness);
+    };
+    presets.push({
+      title: "Higgs mass: clustering algorithm scan",
+      desc: `Durham vs. anti-kt radii mH peak, for ${(DASHBOARD_DATA.process_meta[proc] || {}).label || proc}`,
+      methods, processes: [proc], colorOf, quantity: "mass",
+    });
+  }
+
+  // 7. Higgs mass: detector / matching comparison (mirrors slide 15).
+  if (detectorMethods.length > 1) {
+    const proc = representativeProcess();
+    presets.push({
+      title: "Higgs mass: detector comparison",
+      desc: `PF jets vs. Calo jets vs. ideal matching mH peak, for ${(DASHBOARD_DATA.process_meta[proc] || {}).label || proc}`,
+      methods: detectorMethods, processes: [proc],
+      colorOf: (m) => detectorColors[m],
+      quantity: "mass",
+    });
+  }
+
   const container = document.getElementById("presetList");
   container.innerHTML = "";
   presets.forEach(preset => {
@@ -368,6 +487,57 @@ function rebuildSelectionList(combos) {
 
 let currentPointIndex = []; // parallel array: per main-plot trace point -> {method, process, quantity, binIdx}
 
+function massHistTrace(rec, color, name, dash) {
+  const edges = rec.edges || [];
+  const y = rec.y || [];
+  const centers = [];
+  for (let i = 0; i < edges.length - 1; i++) centers.push(0.5 * (edges[i] + edges[i + 1]));
+  return {
+    x: centers, y: y, mode: "lines", type: "scatter",
+    line: {color: color, dash: dash || "solid", shape: "hv"},
+    name: name,
+  };
+}
+
+function renderMassPlot(combos) {
+  const quantity = currentQuantity();
+  const traces = [];
+  const showAllDefs = combos.length === 1;
+
+  combos.forEach(({method, process}) => {
+    const entry = getEntry(method, process, quantity);
+    if (!entry) return;
+    const baseColor = colorFor(method, process);
+    const labelBase = DASHBOARD_DATA.methods[method].label + " / " +
+      ((DASHBOARD_DATA.process_meta[process] || {}).label || process);
+    const defsToShow = showAllDefs ? MASS_DEFINITIONS : MASS_DEFINITIONS.filter(d => d.key === "reco");
+
+    defsToShow.forEach(def => {
+      const rec = (entry.definitions || {})[def.key];
+      if (!rec || !rec.edges || !rec.edges.length) return;
+      const color = showAllDefs ? def.color : baseColor;
+      const name = showAllDefs ? def.label : labelBase;
+      traces.push(massHistTrace(rec, color, name));
+    });
+
+    if (entry.fit && entry.fit.fit_x && entry.fit.fit_y) {
+      traces.push({
+        x: entry.fit.fit_x, y: entry.fit.fit_y, mode: "lines", type: "scatter",
+        name: (showAllDefs ? "reco" : labelBase) + " (Gaussian fit)",
+        line: {color: showAllDefs ? "#000000" : baseColor, dash: "dash"},
+        hoverinfo: "skip",
+      });
+    }
+  });
+
+  Plotly.react("mainPlot", traces, {
+    xaxis: {title: "m_H [GeV]"},
+    yaxis: {title: "Events"},
+    margin: {t: 20},
+    hovermode: "closest",
+  }, {responsive: true});
+}
+
 function redraw() {
   const methods = getChecked(methodOptions);
   const processes = getChecked(processOptions);
@@ -377,8 +547,18 @@ function redraw() {
   methods.forEach(m => processes.forEach(p => combos.push({method: m, process: p})));
   rebuildSelectionList(combos);
 
-  const traces = [];
   currentPointIndex = [];
+
+  const isMass = quantity.kind === "mass";
+  document.getElementById("histHint").style.display = isMass ? "none" : "flex";
+  document.getElementById("histPlot").style.display = isMass ? "none" : "block";
+  document.getElementById("histSelectionList").style.display = isMass ? "none" : "block";
+  if (isMass) {
+    renderMassPlot(combos);
+    return;
+  }
+
+  const traces = [];
 
   combos.forEach(({method, process}) => {
     const entry = getEntry(method, process, quantity);
@@ -557,6 +737,137 @@ function redrawHistPlot() {
     yaxis: {title: normalize ? "normalized" : "count"},
   }, {responsive: true});
 }
+
+// --------------------------------------------------------------------------
+// Tabs
+// --------------------------------------------------------------------------
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+// --------------------------------------------------------------------------
+// Download raw JSON data (the page is self-contained, so this just re-offers
+// the already-inlined DASHBOARD_DATA as a downloadable file).
+// --------------------------------------------------------------------------
+
+document.getElementById("downloadJsonBtn").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(DASHBOARD_DATA)], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "dashboard_data.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+// --------------------------------------------------------------------------
+// Statistics tab: fit coefficients, event counts, filter pass rates.
+// --------------------------------------------------------------------------
+
+function formatFitParams(model, popt) {
+  if (model === "two_param" || model === "two_param_quadrature") {
+    return `A=${popt[0].toFixed(3)} C=${popt[1].toFixed(3)}`;
+  }
+  if (model === "three_param" || model === "three_param_quadrature") {
+    return `A=${popt[0].toFixed(3)} B=${popt[2].toFixed(3)} C=${popt[1].toFixed(3)}`;
+  }
+  if (model === "gaussian") {
+    return `mu=${popt[0].toFixed(2)} sigma=${popt[1].toFixed(2)}`;
+  }
+  return popt.map(v => Number(v).toFixed(3)).join(", ");
+}
+
+function buildStatsTable(container, columns, rows) {
+  if (!rows.length) {
+    container.innerHTML = '<p style="font-size:12px;color:#999;">No data available.</p>';
+    return;
+  }
+  let html = '<table class="stats-table"><thead><tr>';
+  columns.forEach(c => { html += `<th>${c}</th>`; });
+  html += "</tr></thead><tbody>";
+  rows.forEach(row => {
+    html += "<tr>";
+    row.forEach(cell => {
+      const isObj = cell !== null && typeof cell === "object";
+      const cls = isObj && cell.best ? ' class="best"' : "";
+      const text = isObj ? cell.text : cell;
+      html += `<td${cls}>${text === undefined || text === null ? "" : text}</td>`;
+    });
+    html += "</tr>";
+  });
+  html += "</tbody></table>";
+  container.innerHTML = html;
+}
+
+function renderFitCoefficientsTable() {
+  const rows = [];
+  methodNames.forEach(method => {
+    const methodLabel = DASHBOARD_DATA.methods[method].label;
+    processNames.forEach(process => {
+      const procData = DASHBOARD_DATA.methods[method].processes[process];
+      if (!procData) return;
+      const procLabel = (DASHBOARD_DATA.process_meta[process] || {}).label || process;
+
+      QUANTITIES.forEach(q => {
+        if (q.kind === "mass") {
+          const fit = procData.mass && procData.mass.fit;
+          if (fit) {
+            rows.push([methodLabel, procLabel, "Higgs mass peak", fit.model, formatFitParams(fit.model, fit.popt)]);
+          }
+          return;
+        }
+        const entry = getEntry(method, process, q);
+        if (entry && entry.model && entry.popt) {
+          rows.push([methodLabel, procLabel, q.label, entry.model, formatFitParams(entry.model, entry.popt)]);
+        }
+      });
+    });
+  });
+  buildStatsTable(document.getElementById("fitCoeffTable"), ["Method", "Process", "Quantity", "Model", "Parameters"], rows);
+}
+
+function renderCountAndPassRateTables() {
+  const stats = DASHBOARD_DATA.stats || {};
+  const processes = Object.keys(stats).sort();
+  const folderSet = new Set();
+  processes.forEach(p => Object.keys(stats[p]).forEach(f => folderSet.add(f)));
+  const folders = Array.from(folderSet).sort();
+
+  const countRows = processes.map(p => {
+    const row = [p];
+    folders.forEach(f => {
+      const m = stats[p][f];
+      row.push(m ? `${Math.round(m.before)} / ${Math.round(m.after)}` : "");
+    });
+    return row;
+  });
+  buildStatsTable(document.getElementById("eventCountTable"), ["Process", ...folders], countRows);
+
+  const rateRows = processes.map(p => {
+    const values = folders.map(f => (stats[p][f] || {}).pass_rate);
+    const numeric = values.filter(v => typeof v === "number");
+    const best = numeric.length ? Math.max(...numeric) : null;
+    const row = [p];
+    folders.forEach((f, i) => {
+      const v = values[i];
+      if (typeof v !== "number") { row.push(""); return; }
+      row.push({text: v.toFixed(3), best: best !== null && Math.abs(v - best) < 1e-12});
+    });
+    return row;
+  });
+  buildStatsTable(document.getElementById("passRateTable"), ["Process", ...folders], rateRows);
+}
+
+renderFitCoefficientsTable();
+renderCountAndPassRateTables();
 
 buildOptionList(methodOptions, methodNames, n => DASHBOARD_DATA.methods[n].label, redraw);
 buildOptionList(processOptions, processNames, n => (DASHBOARD_DATA.process_meta[n] || {}).label || n, redraw);

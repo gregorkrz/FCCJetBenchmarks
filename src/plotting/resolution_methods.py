@@ -301,3 +301,86 @@ def fit_resolution_model(mid_points, values, model="three_param", min_E=0.0,
     xs = np.linspace(mid_points.min(), mid_points.max(), n_curve_points)
     ys = spec["func"](xs, *popt)
     return xs, ys, np.abs(popt), pcov
+
+
+def downsample_for_dashboard(y, edges, max_points=150):
+    """Rebin (y, edges) for storage in the (small) dashboard data file.
+
+    Purely for visual display in the dashboard - not used for any
+    statistical computation, which always happens on the full-resolution
+    histograms. Generic over any binned histogram, so it's shared between
+    the resolution and Higgs-mass dashboard pickles.
+    """
+    y = np.asarray(y)
+    edges = np.asarray(edges)
+    n = len(y)
+    if n <= max_points:
+        return y, edges
+    factor = int(np.ceil(n / max_points))
+    n_new = n // factor
+    y_ds = np.array([y[i * factor : (i + 1) * factor].sum() for i in range(n_new)])
+    edges_ds = np.array([edges[i * factor] for i in range(n_new)] + [edges[n_new * factor]])
+    return y_ds, edges_ds
+
+
+# --------------------------------------------------------------------------
+# Peak-shape fit models (used for the Higgs mass peak; pluggable so more
+# fitting methods can be added later without touching mass_plots.py).
+# --------------------------------------------------------------------------
+
+
+def _gaussian_peak(x, mu, sigma, norm):
+    return norm * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
+
+
+PEAK_FIT_MODELS = {
+    "gaussian": dict(func=_gaussian_peak, n_params=3),
+    "dscb": dict(func=_double_crystal_ball, n_params=7),
+}
+
+
+def add_peak_fit_model(name, func, n_params):
+    PEAK_FIT_MODELS[name] = dict(func=func, n_params=n_params)
+
+
+def fit_peak(x_vals, y_vals, model="gaussian", window=None, n_curve_points=200):
+    """Fit a peak-shape model to a 1D histogram (e.g. the Higgs mass peak).
+
+    Restricts the fit to `window` (mu0 +/- 30, by default, where mu0 is the
+    argmax of y_vals) so a long tail doesn't bias the fit. Returns
+    (xs, ys, popt) tracing the fitted curve, or None on failure/too few points.
+    """
+    x = np.asarray(x_vals, dtype=float)
+    y = np.asarray(y_vals, dtype=float)
+    if len(x) == 0 or np.sum(y) <= 0:
+        return None
+
+    mu0 = x[np.argmax(y)]
+    if window is None:
+        window = (mu0 - 30, mu0 + 30)
+    mask = (x >= window[0]) & (x <= window[1])
+    x_fit, y_fit = x[mask], y[mask]
+    if len(x_fit) < 5:
+        return None
+
+    spec = PEAK_FIT_MODELS[model]
+    sigma0 = max(float(np.sqrt(np.average((x_fit - mu0) ** 2, weights=np.clip(y_fit, 0, None)))), 1e-3)
+    norm0 = float(np.max(y_fit))
+
+    if model == "gaussian":
+        p0 = [mu0, sigma0, norm0]
+        bounds = ([x_fit.min(), 1e-3, 0.0], [x_fit.max(), (x_fit.max() - x_fit.min()), np.inf])
+    elif model == "dscb":
+        p0 = [mu0, sigma0, 1.5, 3.0, 1.5, 3.0, norm0]
+        bounds = (-np.inf, np.inf)
+    else:
+        raise ValueError(f"Unknown peak fit model: {model}")
+
+    try:
+        popt, _ = curve_fit(spec["func"], x_fit, y_fit, p0=p0, bounds=bounds, maxfev=10000)
+    except RuntimeError:
+        return None
+
+    xs = np.linspace(x_fit.min(), x_fit.max(), n_curve_points)
+    ys = spec["func"](xs, *popt)
+    return xs, ys, popt
