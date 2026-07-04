@@ -18,10 +18,12 @@ In addition to the PDF plots, this script writes:
     where applicable) used by build_dashboard_data.py to build the
     interactive HTML dashboard.
 
-Each process's fit+plot block is wrapped in a try/except RuntimeError: if
-curve_fit fails to converge for one process, that process is skipped (with a
-warning) instead of crashing the whole script and losing
-resolution_dashboard_data.pkl for every other process in this method.
+Each process's fit+plot block is wrapped in a broad try/except: if curve_fit
+fails for one process - whether it's a RuntimeError (non-convergence) or a
+ValueError (e.g. empty ydata when no energy/angle bin has enough statistics)
+- that process is skipped (with a warning) instead of crashing the whole
+script and losing resolution_dashboard_data.pkl for every other process in
+this method.
 
 Usage:
     python src/plotting/resolution_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
@@ -78,10 +80,15 @@ def print_params(popt):
 def _safe_fit(mid_points, values, model, **kwargs):
     """fit_resolution_model, but returns None (instead of raising) on failure -
     used to fit both two_param and three_param so the dashboard can offer a
-    model dropdown without either fit's failure taking down the other."""
+    model dropdown without either fit's failure taking down the other.
+
+    Catches Exception broadly, not just RuntimeError: curve_fit raises
+    ValueError for invalid input (e.g. empty ydata when a process has zero
+    bins with enough statistics), not just RuntimeError for non-convergence.
+    """
     try:
         xs, ys, popt, _pcov = fit_resolution_model(mid_points, values, model=model, **kwargs)
-    except RuntimeError as e:
+    except Exception as e:
         print(f"⚠️ {model} fit failed: {e}")
         return None
     return {"popt": popt.tolist(), "fit_x": xs.tolist(), "fit_y": ys.tolist()}
@@ -436,8 +443,13 @@ for jet_part in jet_parts_to_process:
                     ax_resolution_per_process[proc_idx, 0].legend()
                     ax_resolution_per_process[proc_idx, 0].grid(True)
                     ax_resolution_per_process[proc_idx, 1].grid(True)
-            except RuntimeError as e:
-                print(f"\u26a0\ufe0f Skipping process {process} ({jet_part}) entirely due to a fit failure: {e}")
+            except Exception as e:
+                # Broad on purpose: curve_fit raises ValueError for invalid input
+                # (e.g. empty ydata when no energy/angle bin has enough statistics),
+                # not just RuntimeError for non-convergence - either way, skip this
+                # one process instead of losing resolution_dashboard_data.pkl for
+                # every other process in this method.
+                print(f"\u26a0\ufe0f Skipping process {process} ({jet_part}) entirely due to an error: {e}")
                 continue
         if not args.angles_only:
             ax_resolution_per_process_Njets[0, 0].set_title("Final state containing b-jets")

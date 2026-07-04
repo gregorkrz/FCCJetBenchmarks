@@ -184,7 +184,7 @@ def sigma_dscb(y, edges, wmin=0.7, wmax=1.2, **kwargs):
     p0 = [MPV_guess, sigma_guess, 1.5, 3.0, 1.5, 3.0, max(yc)]
     try:
         popt, _ = curve_fit(_double_crystal_ball, centers, yc, p0=p0, maxfev=10000)
-    except RuntimeError:
+    except Exception:
         print("⚠️ DSCB fit failed.")
         return None
     mu, sigma, *_ = popt
@@ -209,7 +209,7 @@ def sigma_gaussian_fit(y, edges, wmin=0.7, wmax=1.2, **kwargs):
     p0 = [mean_guess, sigma_guess, max(yc_fit)]
     try:
         popt, _ = curve_fit(gaussian, centers_fit, yc_fit, p0=p0, maxfev=10000)
-    except RuntimeError:
+    except Exception:
         print("⚠️ Gaussian fit failed.")
         return None
     mu, sigma, _ = popt
@@ -378,7 +378,7 @@ def fit_peak(x_vals, y_vals, model="gaussian", window=None, n_curve_points=200):
 
     try:
         popt, _ = curve_fit(spec["func"], x_fit, y_fit, p0=p0, bounds=bounds, maxfev=10000)
-    except RuntimeError:
+    except Exception:
         return None
 
     xs = np.linspace(x_fit.min(), x_fit.max(), n_curve_points)

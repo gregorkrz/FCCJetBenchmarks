@@ -338,8 +338,11 @@ python src/plotting/make_interactive_dashboard.py --data $PATH_TO_HISTOGRAMS/plo
     (colored by the `process_config.py` flavour convention), and two Higgs-mass presets (clustering algorithm scan,
     detector comparison) showing the mH peak shift directly. Presets are computed from whatever methods/processes
     are actually present, so they degrade gracefully if a comparison's methods aren't in your dataset.
-  - Pick custom colors per (method, process) curve (defaults: auto colors / `process_config.py` colors), or click
-    "Auto colors" to drop any manual overrides back to those defaults.
+  - Pick custom colors per (method, process) curve (defaults: `process_config.py` colors, or an auto-cycled
+    fallback), or click "Auto colors" to clear any manual overrides and assign every currently-selected combo an
+    evenly-spaced hue around the color wheel, guaranteeing they're all visually distinct from each other (unlike
+    the `process_config.py` defaults, which can make two different methods showing the same process look
+    identical).
   - "All"/"None" buttons above the Methods and Processes lists, plus "2-jet"/"4-jet"/"6-jet" quick-select buttons
     for Processes (using `process_config.py`'s `NUMBER_OF_JETS`).
   - **"Show fit curve(s)"** checkbox to toggle the dashed fit overlay on/off, and a **"Fit model"** dropdown to

@@ -1157,8 +1157,21 @@ document.getElementById("processes4jBtn").addEventListener("click", () => select
 document.getElementById("processes6jBtn").addEventListener("click", () => selectProcessesByNJets(6));
 
 document.getElementById("autoColorsBtn").addEventListener("click", () => {
+  // Assign evenly-spaced hues across the currently selected combos, so they
+  // are guaranteed visually distinct from each other - unlike falling back to
+  // process_config.py colors, which can make two different methods showing
+  // the same process look identical.
+  const methods = getChecked(methodOptions);
+  const processes = getChecked(processOptions);
+  const combos = [];
+  methods.forEach(m => processes.forEach(p => combos.push(m + "||" + p)));
+
   selectedColors.clear();
   autoColorIdx = 0;
+  combos.forEach((k, i) => {
+    const hue = (i * 360) / Math.max(1, combos.length);
+    selectedColors.set(k, hslToHex(hue, 65, 45));
+  });
   redraw();
 });
 
