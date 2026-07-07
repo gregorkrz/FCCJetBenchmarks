@@ -45,6 +45,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--check-only-missing",
                         action="store_true",
                         help="If toggled on, it will check for missing files")
+    parser.add_argument("--histograms", action="store_true",
+                        help=(
+                            "Check histmaker output files (a bag of TH1/TH2/TH3 histograms, "
+                            "no 'events' TTree) instead of FastSim/Delphes files. A file is "
+                            "flagged if it's too small, unreadable, or has fewer than "
+                            "--min-keys histograms."
+                        ))
+    parser.add_argument("--min-keys", type=int, default=5,
+                        help="With --histograms: flag files with fewer readable histograms "
+                             "than this (default: 5).")
+    parser.add_argument("--min-size", type=int, default=10000,
+                        help="With --histograms: flag files smaller than this many bytes "
+                             "(default: 10000, matches the 'already done' size check in "
+                             "generate_analysis_jobs.py).")
     return parser.parse_args()
 
 all_process_filenames = [
@@ -93,6 +107,32 @@ def find_missing_files(root_dir: str):
                 yield os.path.join(dirpath, expected_fname)
 
 
+def check_histogram_file(path: str, min_keys: int, min_size: int):
+    """Returns None if `path` looks like a healthy histmaker output file, else a
+    string reason it was flagged. Reads via uproot (not ROOT's TFile) because
+    TFile silently "recovers" truncated files instead of failing on them, which
+    would mask exactly the preemption-truncated files we're looking for.
+    """
+    import uproot  # type: ignore
+
+    size = os.path.getsize(path)
+    if size < min_size:
+        return f"file too small ({size} bytes < {min_size})"
+
+    try:
+        with uproot.open(path) as f:
+            keys = f.keys(cycle=False)
+            if len(keys) < min_keys:
+                return f"only {len(keys)} histogram(s) found (expected >= {min_keys})"
+            for key in keys:
+                obj = f[key]
+                if hasattr(obj, "values"):
+                    obj.values()
+    except Exception as exc:
+        return f"failed to read: {exc.__class__.__name__}: {exc}"
+    return None
+
+
 def main() -> int:
     args = parse_args()
     try:
@@ -109,6 +149,13 @@ def main() -> int:
             print("Missing file: ", path)
             corrupted.append((path, "missing file"))
             total += 1
+    elif args.histograms:
+        for path in iter_root_files(args.root_dir, args.ext):
+            print("Doing path: ", path)
+            total += 1
+            reason = check_histogram_file(path, args.min_keys, args.min_size)
+            if reason:
+                corrupted.append((path, reason))
     else:
         for path in iter_root_files(args.root_dir, args.ext):
             print("Doing path: ", path)
