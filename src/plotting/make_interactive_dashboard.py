@@ -253,9 +253,8 @@ QUANTITIES.forEach(q => {
 const methodOptions = document.getElementById("methodOptions");
 const processOptions = document.getElementById("processOptions");
 
-function getEntry(method, process, quantity, root) {
-  root = root || DASHBOARD_DATA;
-  const methodData = root.methods && root.methods[method];
+function getEntry(method, process, quantity) {
+  const methodData = DASHBOARD_DATA.methods && DASHBOARD_DATA.methods[method];
   const procData = methodData && methodData.processes && methodData.processes[process];
   if (!procData) return null;
   if (quantity.kind === "energy") {
@@ -277,39 +276,62 @@ function getEntry(method, process, quantity, root) {
 }
 
 // --------------------------------------------------------------------------
-// Full-resolution histograms: lazily fetched (not inlined) from
-// dashboard_data_full.json, written by build_dashboard_data.py next to
-// dashboard_data.json / dashboard.html. Only loaded once the user actually
-// asks to see a non-downsampled histogram.
+// Full-resolution histograms: each light bin/definition record carries its
+// own "full_url" (written by build_dashboard_data.py into a `full_hist/`
+// folder next to dashboard_data.json / dashboard.html), one small JSON file
+// per histogram. Only the exact histogram currently being rendered is fetched
+// - never the whole full-resolution dataset - and only once the user asks to
+// see non-downsampled histograms.
 // --------------------------------------------------------------------------
 
-const FULL_DATA_URL = "dashboard_data_full.json";
-let fullDataCache = null;
-let fullDataPromise = null;
+const fullRecordCache = new Map(); // full_url -> {edges, y}
+const fullRecordPromises = new Map(); // full_url -> in-flight promise
+const pendingFullUrls = new Set();
 
-function loadFullData() {
-  if (fullDataCache) return Promise.resolve(fullDataCache);
-  if (!fullDataPromise) {
-    fullDataPromise = fetch(FULL_DATA_URL)
-      .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(data => { fullDataCache = data; return data; })
-      .catch(err => { fullDataPromise = null; throw err; });
-  }
-  return fullDataPromise;
+function updateFullHistStatus() {
+  const status = document.getElementById("fullHistStatus");
+  status.textContent = pendingFullUrls.size
+    ? `Loading ${pendingFullUrls.size} full-resolution histogram(s)...`
+    : "";
 }
 
 function showFullHistEnabled() {
-  return document.getElementById("showFullHistCheckbox").checked && !!fullDataCache;
+  return document.getElementById("showFullHistCheckbox").checked;
 }
 
-// Given a light bin/definition record (with "edges"/"y") plus its resolved
-// path, return the full-resolution version if the user asked for it and it's
-// loaded, else the light (downsampled) version, unchanged.
-function resolveHistRecord(method, process, quantity, lightRec, pathInEntry) {
-  if (!showFullHistEnabled()) return lightRec;
-  const fullEntry = getEntry(method, process, quantity, fullDataCache);
-  const fullRec = fullEntry ? pathInEntry(fullEntry) : null;
-  return (fullRec && fullRec.edges && fullRec.edges.length) ? fullRec : lightRec;
+// Given a light bin/definition record (with "edges"/"y" and, if a
+// full-resolution version exists, "full_url"), return the full-resolution
+// version if the user asked for it and it's already cached; otherwise kick
+// off (at most one) fetch for that exact histogram and return the light
+// version in the meantime, redrawing once the fetch resolves.
+function resolveHistRecord(lightRec) {
+  if (!showFullHistEnabled() || !lightRec || !lightRec.full_url) return lightRec;
+  const url = lightRec.full_url;
+  if (fullRecordCache.has(url)) return fullRecordCache.get(url);
+  if (!fullRecordPromises.has(url)) {
+    pendingFullUrls.add(url);
+    updateFullHistStatus();
+    const promise = fetch(url)
+      .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(data => {
+        fullRecordCache.set(url, data);
+        fullRecordPromises.delete(url);
+        pendingFullUrls.delete(url);
+        updateFullHistStatus();
+        redraw();
+        redrawHistPlot();
+      })
+      .catch(err => {
+        fullRecordPromises.delete(url);
+        pendingFullUrls.delete(url);
+        updateFullHistStatus();
+        document.getElementById("fullHistStatus").textContent =
+          `Could not load ${url} (${err.message}). Make sure full_hist/ is next to dashboard.html ` +
+          "and both are served over http(s), not file://.";
+      });
+    fullRecordPromises.set(url, promise);
+  }
+  return lightRec;
 }
 
 function currentQuantity() {
@@ -604,8 +626,7 @@ function renderMassPlot(combos) {
     defsToShow.forEach(def => {
       const rec = (entry.definitions || {})[def.key];
       if (!rec || !rec.edges || !rec.edges.length) return;
-      const histRec = resolveHistRecord(method, process, quantity, rec,
-        fullEntry => (fullEntry.definitions || {})[def.key]);
+      const histRec = resolveHistRecord(rec);
       const color = showAllDefs ? def.color : baseColor;
       const name = showAllDefs ? def.label : labelBase;
       traces.push(massHistTrace(histRec, color, name));
@@ -791,8 +812,7 @@ function redrawHistPlot() {
     // lo/hi/low/high/mpv metadata only exists on the light record - the full
     // version (when loaded) only carries edges/y, so it's resolved separately
     // and only used for the histogram shape itself.
-    const quantity = QUANTITIES.find(q => q.key === info.quantity);
-    const histRec = resolveHistRecord(info.method, info.process, quantity, rec, fullEntry => (fullEntry.bins || [])[binIdx]);
+    const histRec = resolveHistRecord(rec);
     const edges = histRec.edges || [];
     let y = histRec.y || [];
     const centers = [];
@@ -928,17 +948,11 @@ function applyState(state) {
     document.getElementById("tab-statistics").classList.add("active");
   }
 
-  const finish = () => { redraw(); redrawHistPlot(); };
-  if (state.showFullHist) {
-    document.getElementById("showFullHistCheckbox").checked = true;
-    loadFullData().then(finish).catch(err => {
-      console.warn("Could not restore full-resolution histogram view:", err);
-      document.getElementById("showFullHistCheckbox").checked = false;
-      finish();
-    });
-  } else {
-    finish();
+  if (typeof state.showFullHist === "boolean") {
+    document.getElementById("showFullHistCheckbox").checked = state.showFullHist;
   }
+  redraw();
+  redrawHistPlot();
 }
 
 function saveStateToHash() {
@@ -1097,21 +1111,7 @@ quantitySelect.addEventListener("change", redraw);
 document.getElementById("showFitCheckbox").addEventListener("change", redraw);
 document.getElementById("fitModelSelect").addEventListener("change", redraw);
 
-document.getElementById("showFullHistCheckbox").addEventListener("change", async (e) => {
-  const status = document.getElementById("fullHistStatus");
-  if (e.target.checked) {
-    status.textContent = "Loading full-resolution data...";
-    try {
-      await loadFullData();
-      status.textContent = "";
-    } catch (err) {
-      status.textContent = `Could not load ${FULL_DATA_URL} (${err.message}). Make sure it's next ` +
-        "to dashboard.html and both are served over http(s) - not opened via file://. Falling back " +
-        "to downsampled histograms.";
-      e.target.checked = false;
-      return;
-    }
-  }
+document.getElementById("showFullHistCheckbox").addEventListener("change", () => {
   redraw();
   redrawHistPlot();
 });

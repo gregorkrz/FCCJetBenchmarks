@@ -4,14 +4,16 @@ Walks a top-level histogram directory containing one subfolder per jet
 clustering method (e.g. `PF_Durham`, `CaloJets_Durham`, `PF_AntiKtR08`, ...),
 loads each method's `plots_resolution/resolution_dashboard_data.pkl`
 (produced by `resolution_plots.py`) and `plots_mass/mass_dashboard_data.pkl`
-(produced by `mass_plots.py`), and consolidates everything into two JSON
-files consumed by `make_interactive_dashboard.py`:
+(produced by `mass_plots.py`), and consolidates everything for
+`make_interactive_dashboard.py` into:
 
 - `dashboard_data.json`: the light, downsampled data that gets inlined into
-  dashboard.html itself.
-- `dashboard_data_full.json`: the full-resolution histograms
-  (`_split_full_histograms`), fetched lazily by dashboard.html only when the
-  user asks to see a non-downsampled histogram - not baked into the page.
+  dashboard.html itself. Every full-resolution histogram
+  (`_extract_full_histograms`) is replaced by a `"full_url"` pointer.
+- `full_hist/...json`: one small JSON file per full-resolution histogram
+  (one per energy/angle/eta/costheta bin, one per mass definition), so
+  dashboard.html can fetch, on demand, only the exact histogram the user
+  clicks on instead of the entire full-resolution dataset.
 
 Usage:
     python src/plotting/build_dashboard_data.py --inputDir $PATH_TO_HISTOGRAMS
@@ -21,6 +23,7 @@ import json
 import os
 import pickle
 import re
+import shutil
 
 import numpy as np
 
@@ -75,38 +78,39 @@ def _sanitize(obj):
     return obj
 
 
-def _split_full_histograms(obj):
-    """Pull the full-resolution "edges_full"/"y_full" pair out of every
-    histogram-bin-like dict in obj, returning (light, full):
+def _sanitize_path_part(part):
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", str(part))
 
-    - light: obj with those two keys removed everywhere (what ships inlined
-      in dashboard.html).
-    - full: a tree mirroring obj's shape, but containing ONLY {"edges", "y"}
-      at the paths where a full-resolution pair was found (None where there's
-      nothing full to report), so dashboard.html can fetch it lazily and look
-      it up using the exact same path it already uses for the light version.
+
+def _extract_full_histograms(obj, path_parts, full_dir, url_prefix):
+    """Pull the full-resolution "edges_full"/"y_full" pair out of every
+    histogram-bin-like dict in obj, writing each one to its own small JSON
+    file under full_dir (named after the path to reach it, e.g.
+    `PF_Durham/p8_ee_ZH_qqqq_ecm240/energy/_all/bins/3.json`) and replacing it
+    in the returned light copy with a `"full_url"` pointer to that file - so
+    dashboard.html can lazily fetch exactly the one histogram it needs to
+    render, instead of the entire full-resolution dataset.
     """
     if isinstance(obj, dict):
         if "edges_full" in obj and "y_full" in obj:
             light = {k: v for k, v in obj.items() if k not in ("edges_full", "y_full")}
-            full = {"edges": obj["edges_full"], "y": obj["y_full"]}
-            return light, full
-        light_out, full_out = {}, {}
-        for k, v in obj.items():
-            light_v, full_v = _split_full_histograms(v)
-            light_out[k] = light_v
-            if full_v is not None:
-                full_out[k] = full_v
-        return light_out, (full_out or None)
+            rel_path = "/".join(_sanitize_path_part(p) for p in path_parts) + ".json"
+            full_path = os.path.join(full_dir, rel_path)
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            with open(full_path, "w") as fh:
+                json.dump({"edges": obj["edges_full"], "y": obj["y_full"]}, fh)
+            light["full_url"] = url_prefix + rel_path
+            return light
+        return {
+            k: _extract_full_histograms(v, path_parts + [k], full_dir, url_prefix)
+            for k, v in obj.items()
+        }
     if isinstance(obj, list):
-        light_list, full_list, any_full = [], [], False
-        for item in obj:
-            light_v, full_v = _split_full_histograms(item)
-            light_list.append(light_v)
-            full_list.append(full_v)
-            any_full = any_full or full_v is not None
-        return light_list, (full_list if any_full else None)
-    return obj, None
+        return [
+            _extract_full_histograms(v, path_parts + [i], full_dir, url_prefix)
+            for i, v in enumerate(obj)
+        ]
+    return obj
 
 
 def discover_methods(input_dir):
@@ -153,11 +157,11 @@ def main():
         help="Output JSON path (default: $inputDir/plots/dashboard_data.json)",
     )
     parser.add_argument(
-        "--output-full",
+        "--full-hist-dir",
         type=str,
         default=None,
-        help="Output path for the full-resolution histograms, lazily fetched by dashboard.html "
-        "(default: alongside --output, named dashboard_data_full.json)",
+        help="Output directory for the per-histogram full-resolution JSON files, lazily fetched "
+        "by dashboard.html (default: alongside --output, named full_hist/)",
     )
     args = parser.parse_args()
 
@@ -168,9 +172,16 @@ def main():
             "Run extract_resolution_data.py and resolution_plots.py for each method first."
         )
 
+    output_path = args.output or os.path.join(args.inputDir, "plots", "dashboard_data.json")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    full_hist_dir = args.full_hist_dir or os.path.join(os.path.dirname(output_path), "full_hist")
+    if os.path.isdir(full_hist_dir):
+        shutil.rmtree(full_hist_dir)
+    url_prefix = os.path.relpath(full_hist_dir, os.path.dirname(output_path)) + "/"
+
     all_processes = set()
     methods_out = {}
-    methods_out_full = {}
     for method_name, pkl_path in methods:
         print("Loading dashboard data for method:", method_name)
         with open(pkl_path, "rb") as fh:
@@ -183,13 +194,13 @@ def main():
             for process, mass_entry in mass_data.items():
                 data.setdefault(process, {})["mass"] = mass_entry
 
-        light_data, full_data = _split_full_histograms(_sanitize(data))
+        light_data = _extract_full_histograms(
+            _sanitize(data), [method_name], full_hist_dir, url_prefix
+        )
         methods_out[method_name] = {
             "label": method_label(method_name),
             "processes": light_data,
         }
-        if full_data is not None:
-            methods_out_full[method_name] = {"processes": full_data}
 
     process_meta = {}
     for process in sorted(all_processes):
@@ -212,24 +223,19 @@ def main():
         "stats": stats or {},
     }
 
-    output_path = args.output or os.path.join(args.inputDir, "plots", "dashboard_data.json")
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w") as fh:
         json.dump(output, fh)
 
     print("Saved consolidated dashboard data to:", output_path)
     print(f"Methods: {len(methods_out)}, Processes: {len(process_meta)}")
 
-    if methods_out_full:
-        output_full_path = args.output_full or os.path.join(
-            os.path.dirname(output_path), "dashboard_data_full.json"
-        )
-        with open(output_full_path, "w") as fh:
-            json.dump({"methods": methods_out_full}, fh)
+    if os.path.isdir(full_hist_dir):
+        n_full_histograms = sum(len(files) for _, _, files in os.walk(full_hist_dir))
         print(
-            "Saved full-resolution histograms to:", output_full_path,
-            "(lazily fetched by dashboard.html when the 'show full histogram' checkbox is toggled - "
-            "keep it next to dashboard.html and serve both over http(s), not file://)",
+            f"Saved {n_full_histograms} full-resolution histograms to:", full_hist_dir,
+            "(one JSON file per histogram, lazily fetched by dashboard.html only for the exact "
+            "histogram being displayed when the 'show full histogram' checkbox is toggled - keep "
+            "it next to dashboard.html and serve both over http(s), not file://)",
         )
 
 

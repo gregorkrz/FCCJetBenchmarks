@@ -529,10 +529,15 @@ fig_bins, ax_bins = plt.subplots(len(binsE) - 1, 1, figsize=(6, 4 * (len(binsE) 
 
 for i in range(len(binsE) - 1):
     for process in sorted(list(processList.keys())):
+        if process not in bin_to_histograms_storage or i not in bin_to_histograms_storage[process]:
+            print(f"Skipping bin {i} for process {process}: no histogram stored (process may have failed earlier).")
+            continue
         y_normalized, edges = bin_to_histograms_storage[process][i]
         ax[i].step(edges[:-1], y_normalized, where="post", label=process)
         ax_bins[i].step(edges[:-1], y_normalized, where="post", label=process)
-        for method in method_low_high_mid_point_storage[process]:
+        for method in method_low_high_mid_point_storage.get(process, {}):
+            if i >= len(method_low_high_mid_point_storage[process][method]):
+                continue
             lo, hi, mpv = method_low_high_mid_point_storage[process][method][i]
             for _ax in [ax[i], ax_bins[i]]:
                 _ax.axvline(lo, color=method_to_color[method], linestyle="--", alpha=0.8)

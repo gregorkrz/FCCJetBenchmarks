@@ -317,12 +317,13 @@ python src/plotting/build_dashboard_data.py --inputDir $PATH_TO_HISTOGRAMS
 python src/plotting/make_interactive_dashboard.py --data $PATH_TO_HISTOGRAMS/plots/dashboard_data.json
 ```
 
-  This produces two files under `$PATH_TO_HISTOGRAMS/plots/`:
+  This produces the following under `$PATH_TO_HISTOGRAMS/plots/`:
   - `dashboard.html`: a single HTML file (Plotly.js via CDN, vanilla JS, no build step or server needed — just
     open it in a browser). Everything except the full-resolution histograms (see below) is inlined into this file.
-  - `dashboard_data_full.json`: the full-resolution (non-downsampled) histograms, kept out of dashboard.html and
-    fetched lazily, only if/when you ask to see them (see "Full vs. downsampled histograms" below). Keep it next
-    to dashboard.html.
+  - `full_hist/`: one small JSON file per full-resolution (non-downsampled) histogram — one per per-bin
+    energy/angle/eta/costheta histogram and one per Higgs-mass definition — kept out of dashboard.html and fetched
+    lazily, one file at a time, only for the exact histogram currently on screen when you ask to see it (see "Full
+    vs. downsampled histograms" below). Keep this folder next to dashboard.html.
 
   dashboard.html has two tabs:
 
@@ -358,14 +359,17 @@ python src/plotting/make_interactive_dashboard.py --data $PATH_TO_HISTOGRAMS/plo
     by side; a selection list lets you remove individual histograms or clear them all.
   - **Full vs. downsampled histograms**: both the click-to-drill per-bin histograms and the Higgs mass histograms
     are downsampled (capped at ~150-200 points) inside `dashboard.html` itself to keep the page small. Check
-    "Show full-resolution histograms" to lazily `fetch()` `dashboard_data_full.json` (only once, cached after
-    that) and see the actual full-resolution histograms (e.g. 5000 bins for the per-energy-bin `E_reco/E_true`
-    histograms) instead. This only works when dashboard.html and dashboard_data_full.json are served over
-    http(s) — opening dashboard.html directly via `file://` will usually have the fetch blocked by the browser's
-    CORS policy for local files; the checkbox shows an error and falls back to the downsampled view in that case.
+    "Show full-resolution histograms" to lazily `fetch()`, one small JSON file at a time from `full_hist/`, only
+    the exact histogram(s) currently displayed (e.g. 5000 bins for a per-energy-bin `E_reco/E_true` histogram),
+    each cached after its first fetch — toggling other points/definitions on screen fetches just those, not the
+    entire full-resolution dataset. This only works when dashboard.html and `full_hist/` are served over http(s)
+    — opening dashboard.html directly via `file://` will usually have the fetch blocked by the browser's CORS
+    policy for local files; a failed fetch shows an error next to the checkbox and that histogram falls back to
+    its downsampled view.
   - A "Download raw JSON data" button re-offers the page's inlined data as a `dashboard_data.json` download, so
     the underlying numbers can be pulled into another notebook/script without re-running the pipeline (this does
-    not include the full-resolution histograms - fetch `dashboard_data_full.json` separately for those).
+    not include the full-resolution histograms - fetch the relevant file(s) under `full_hist/` separately for
+    those).
   - **The whole view is saved in the URL**: every selection (methods/processes, quantity, fit controls, colors,
     drilled-down histogram points, active tab) is base64url-encoded into the URL hash after each change (via
     `history.replaceState`, so it doesn't spam browser history or trigger a reload), and restored from it on
@@ -443,14 +447,14 @@ The plotting scripts generate the following folders for each jet clustering meth
   (raw per-bin histograms, from `extract_resolution_data.py`), `energy_fit_params_per_process.pkl` /
   `angle_fit_params_per_process.pkl` (consumed by `joint_plots.py`), and `resolution_dashboard_data.pkl`
   (consumed by `build_dashboard_data.py`; each bin/fit entry carries both a downsampled and a full-resolution
-  copy, the latter split back out into `dashboard_data_full.json` rather than inlined in the light JSON)
+  copy, the latter split back out into its own file under `full_hist/` rather than inlined in the light JSON)
 - **`plots_mass/`**: Reconstructed Higgs mass distributions, plus `mass_dashboard_data.pkl` (downsampled +
   full-resolution mH histograms and the Gaussian peak fit, also consumed by `build_dashboard_data.py`)
 
 In addition to this, `print_basic_stats.py --all-folders` writes `basic_stats_summary.json` at the top of
 `$PATH_TO_HISTOGRAMS` (raw event counts + pass rate per process/method), and the summary plots comparing
-different methods, as well as the consolidated `dashboard_data.json`, `dashboard_data_full.json`, and the
-interactive `dashboard.html`, are generated in folder **`plots/`**.
+different methods, as well as the consolidated `dashboard_data.json`, the per-histogram `full_hist/` folder, and
+the interactive `dashboard.html`, are generated in folder **`plots/`**.
 
 ## Project Structure
 
@@ -486,7 +490,7 @@ FCCJetBenchmarks/
 ## Main results
 
 > [!TIP]
-> **[Open the live interactive dashboard](https://d197we12tlgfrq.cloudfront.net/dashboard.html)** — explore jet
+> **[Open the live interactive dashboard](https://d197we12tlgfrq.cloudfront.net/FCCJetBenchmarks/dashboard.html)** — explore jet
 > energy/angular resolution and Higgs mass plots across every process and jet-clustering method, apply one-click
 > presets, and check the Statistics tab for fit coefficients, event counts, and filter pass rates. Rebuilt by
 > `scripts/create_plots.sh` (see [Interactive dashboard](#plotting-scripts) below); use `--html-only` to rebuild
