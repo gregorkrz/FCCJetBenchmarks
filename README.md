@@ -1,6 +1,13 @@
 # FCCJetBenchmarks
 Jet performance benchmark toolkit using the FCCAnalysis framework.
 
+> [!TIP]
+> ### 📊 [Interactive dashboard](https://d197we12tlgfrq.cloudfront.net/FCCJetBenchmarks/dashboard.html)
+> All results in one browsable page: jet energy and angular resolution, Higgs-mass
+> peaks, one-click comparison presets, and a Statistics tab with fit coefficients,
+> event counts and filter pass rates.
+> **https://d197we12tlgfrq.cloudfront.net/FCCJetBenchmarks/dashboard.html**
+
 ## Overview
 
 This toolkit provides a comprehensive benchmarking framework for evaluating jet reconstruction performance in $e^+e^-$ collisions at the Future Circular Collider (FCC). The analysis focuses on ZH production processes at $\sqrt{s} = 240$ GeV, comparing different jet clustering algorithms (Durham, anti-kt, and generalized $e^+e^-$ anti-kt) and reconstruction approaches (particle flow vs. calorimeter jets).
@@ -71,7 +78,9 @@ bash scripts/create_plots.sh $PATH_TO_HISTOGRAMS
 ```
 
 The `create_plots.sh` script computes energy resolution plots and produces detailed plots of different jet-level
-and event-level metrics for each folder in `PATH_TO_HISTOGRAMS` (each clustering method).
+and event-level metrics for each folder in `PATH_TO_HISTOGRAMS` (each clustering method). It ends with the
+interactive dashboard, the presentation JER figures (including the fit-free `JER_points_only` grids) and the
+$m_H$ decomposition figures, so a single invocation regenerates everything.
 
 
 ## Dataset
@@ -115,6 +124,47 @@ process has its own folder, and the files in the folder are named according to t
 ```bash
 python scripts/organize_dataset_per_process.py --base PATH_TO_DATASET
 ```
+
+#### Random seeds (important)
+
+`run_fastsim.py` writes a **per-job copy of the Pythia card with its own `Random:seed`**
+(`write_seeded_pythia_card`, seed = per-process offset + job index, so a re-run of a job reproduces its
+events). Without it Pythia8 defaults to `Random:setSeed = off` and every job generates the *identical*
+event sequence.
+
+> [!WARNING]
+> The `IDEA_20260120` dataset predates this fix: all ~650 files of a process hold the **same 50k
+> generated events**, differing only in the Delphes smearing (its RNG is not seeded from the card). Its
+> gen-level distributions therefore have the statistical power of 50k events, not 32.5M — measurably so:
+> the bin-to-bin scatter of `h_mH_gen` is √650 ≈ 26 times the Poisson expectation. Reco-level quantities
+> are smooth but still only ~50k independent in anything driven by generator-level physics.
+
+Jobs can die partway: Delphes' `TrkUtil::CovSmear` aborts the process on some events (leaving a short but
+readable file) and 6-jet jobs need ~5.5 GB. Use `--events-per-job 5000` to bound the loss and keep the
+default `--mem 10G`. `scripts/supervise_fastsim.py` automates a campaign - every 10 minutes it counts the
+usable events per process, submits anything that was generated but never accepted by slurmctld, and tops
+up whatever is short until each process reaches a goal:
+
+```bash
+python scripts/make_subset_dataset.py ...        # optional: a small symlinked subset
+setsid nohup python scripts/supervise_fastsim.py --dataset $PATH_TO_DATASET_NEW \
+    --goal 3000000 --max-queued 500 &            # log: <dataset>/supervisor.log
+```
+
+Retries always use a *fresh* job index: the seed is derived from it, so re-running a crashed index would
+regenerate the same events and hit the same crash. Jobs are spread round-robin over several
+`(account, partition)` pairs, because the node caps are per association (`atlas` gets `node=5` on roma
+but only 1 on milano) - that alone was worth a factor ~4 in throughput. Files whose job was OOM-killed
+are unreadable and must be removed before the histmaker runs (FCCAnalyses opens every input file to
+count entries and aborts on the first bad one):
+
+```bash
+python scripts/find_corrupted_root_files.py $PATH_TO_DATASET_NEW --allow-partial \
+    --output $PATH_TO_DATASET_NEW/corrupted.txt
+```
+
+`--allow-partial` accepts the legitimately short files from a `TrkUtil` abort and flags only unreadable
+or empty ones.
 
 ### Input file format
 
@@ -296,6 +346,61 @@ python src/plotting/mass_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
   In addition to the mH PDFs and `Higgs_mass_histograms_data.pkl`, this step also writes
   `plots_mass/mass_dashboard_data.pkl`: downsampled reco/gen/GT/reco-GT-matched mH histograms plus a Gaussian fit
   of the reco mH peak, used by the interactive dashboard below.
+
+* **$m_H$ decomposition: invisible loss vs. detector vs. jet definition vs. reco clustering** (placed in `plots/mh_decomposition`).
+  Overlays a nested ladder of $m_H$ definitions, one panel per process, in the same 3x5 grid as the JER
+  "full plots" (rows = 2/4/6 jets, columns = increasing B-hadron content), so each contribution to the peak
+  width can be read off separately:
+
+  | curve | method dir | histogram | what it adds |
+  |---|---|---|---|
+  | Invisible loss ($\nu$) | `PF_Durham` | `h_mH_stable_gt_particles` | visible final-state gen particles from the H, i.e. the neutrino loss from semileptonic heavy-flavour decays (the H natural width is zero in these samples). The only curve without the $\|\eta\|<2.56$ cut |
+  | + Detector | `PF_Durham` | `h_mH_reco_particles_matched` | each of those gen particles replaced by its `RecoMCLink` partner: efficiency, $\|\eta\|<2.56$ acceptance, smearing. **No jets**, so no assignment error can enter |
+  | + Jet definition | `PF_Durham_IdealMatching` | `h_mH_reco` | the cost of partitioning the event into jets: gen jets with every constituent replaced by its reco partner, H jets by parton matching. Mixes irreducible QCD radiation with the clustering convention |
+  | + Reco-jet clustering & matching | `PF_Durham` | `h_mH_reco` | the reco particles are clustered into jets and the H jets found by $\Delta R$ matching - the standard reco $m_H$. Adds particle-level misassignment *and* jet matching (incl. its event loss) |
+
+  The same three PFlow-based curves are also emitted under a second, blunter naming scheme
+  (`mH_decomposition_pflow*.pdf`), where every curve is built from PFlow objects and they differ only in how
+  those objects are grouped into the Higgs candidate - `Detector` (perfect grouping from MC ancestry),
+  `Physics` (grouping from the truth jets) and `Detector + Physics` (everything reco). A third scheme with
+  short labels for slides lives in `mH_decomposition_simple*.pdf`. Every grid figure comes in two
+  orientations: the default has the flavour along the row, `*_by_jets` has 2/4/6 jets along the row so a
+  whole row can be lifted onto a poster.
+
+  Those three definitions each drop a different set of events (only `Detector` is defined for every event),
+  so they are not directly comparable as they stand. `h_mH_common_{detector,ideal,reco}` fix that: the
+  histmaker builds the ideal-matching jets *alongside* the reco ones in a plain reco run and fills the trio
+  only for events where both jet definitions found all the Higgs jets. That intersection cannot be done
+  after the fact from per-method histograms, so it needs one `--algos durham` run; when those histograms are
+  present the plotting step adds `mH_decomposition_pflow_common*.pdf`.
+
+  All four already come out of the histmaker with identical binning (1000 bins, 0-250 GeV), so this step only
+  reads and draws them. It reads the histmaker ROOT files directly with `uproot`, so unlike `mass_plots.py` it
+  needs neither ROOT nor the container, and it does not depend on the rest of the plotting pipeline:
+
+```bash
+python src/plotting/mh_decomposition_plots.py --inputDir $PATH_TO_HISTOGRAMS
+```
+
+  It also writes `mH_jet_multiplicity.pdf`, a multi-page PDF turning the grid inside out: one canvas per
+  $m_H$ definition with the 2-, 4- and 6-jet processes overlaid, once for the grid's light-flavour column
+  (`vvqq` / `qqqq` / `6jet_LF`) and once for its b-jet-rich edge (`vvbb` / `bbbb` / `6jet_HF`), each in both
+  the linear-zoom and log-wide range (16 pages). The legend says just "2/4/6 jets"; a caption names the
+  process behind each.
+
+  Writes four PDFs - three curves and 3+1 curves (adding the invisible-loss baseline), each as a linear zoom (80-150 GeV,
+  the window of the other mH plots) and a log-y wide version (60-200 GeV) that shows the Z-jet contamination
+  shoulder and the low-mass tails - plus `mh_decomposition_summary.md`/`.csv` with $\mu$, $\sigma$, median,
+  68% half-width and the fraction of events for which each definition is defined, and a `README.md` recording
+  the provenance of every curve. Useful flags: `--rebin N` (merge N of the 0.25 GeV bins for drawing; the
+  quoted numbers always use the full resolution), `--reco-hist h_mH_reco_fixed` and `--compare-fixed`
+  (see below), `--zoom-range`/`--wide-range`, `--processes`.
+
+  Note that the two jet-based curves are only filled for events in which all Higgs jets were successfully
+  parton-matched (37% of 6-jet events, 84% of `Z(→νν)H(→bb)`), and that the default fully-matched filter
+  passes different fractions of events in the two method directories. Every curve is normalized to unit area
+  and its kept fraction is reported as `kept_frac` in the summary table. For an apples-to-apples sample, re-run the two
+  methods over a file subset with the filter disabled (see [Quick subset runs](#quick-subset-runs)).
 
 * Matrix plots of different metrics on which all the physics processes are summarized:
 ```bash
@@ -514,6 +619,48 @@ See [RESULTS.md](RESULTS.md) for the main results obtained with this framework a
 have been moved to `jet_tools.h` and `utils.h`.
 
 ## Advanced Usage
+
+### Quick subset runs
+
+The full dataset is ~650 files x 50k events per process, far more than a peak-shape study needs. To iterate
+quickly, symlink a subset (keeping the per-process-subdirectory layout the histmaker expects) and run the
+histmaker against it:
+
+```bash
+python scripts/make_subset_dataset.py --input $PATH_TO_DATASET \
+  --output ${PATH_TO_DATASET}_subset20 --files-per-process 20      # ~1M events per process
+
+python scripts/generate_analysis_jobs.py --algos durham,ideal \
+  --input ${PATH_TO_DATASET}_subset20 \
+  --output ${PATH_TO_HISTOGRAMS}_subset20_nofilter \
+  --jobs-dir jobs_subset20 --time 02:00:00 "--extra-args=--no-filter-fully-matched"
+```
+
+`--jobs-dir` keeps the side run's `.slurm` files away from the production ones in `jobs/`, `--time` shortens
+the SLURM limit, and `--extra-args` appends arbitrary flags to every histmaker command (note the
+`--extra-args=--flag` form: a value starting with `-` has to be attached with `=`).
+
+### The parton -> reco-jet mapping fix
+
+`truth_matching.py` selects the Higgs jets by composing the parton->genjet matching with
+`reco_gen_jet_matching`, which is a **reco->gen** map, so it only lands on the right reco jet where that
+permutation is its own inverse - identity or pure pairwise swaps are fine, a cycle of length >= 3 picks a
+wrong (but same-size) jet subset and the event survives with a wrong mass, typically in the high tail. Two
+jets can never form such a cycle, so 2-jet processes are unaffected; measured on the 6-jet processes, ~2-3%
+of the entries move.
+
+`inv_mass_reco_fixed` / `h_mH_reco_fixed` redo the selection with a genuine gen->reco greedy matching (run in
+that direction rather than inverted, since greedy matching is not symmetric) and are filled alongside the
+original ones, so both can be compared on identical events:
+
+```bash
+python src/plotting/mh_decomposition_plots.py --inputDir ${PATH_TO_HISTOGRAMS}_subset20_nofilter \
+  --reco-hist h_mH_reco_fixed --compare-fixed
+```
+
+This draws the decomposition from the corrected histograms and adds `mH_mapping_fix_comparison*.pdf` plus
+`mh_mapping_fix_summary.md`/`.csv` overlaying old vs. fixed for both methods. The histograms produced before
+this change (i.e. everything currently under `$PATH_TO_HISTOGRAMS`) still use the old mapping.
 
 ### Custom jet matching radius
 
