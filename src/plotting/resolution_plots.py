@@ -37,6 +37,12 @@ import pickle
 import matplotlib
 from src.plotting.resolution_methods import SIGMA_METHODS, fit_resolution_model, downsample_for_dashboard
 
+# Minimum entries for a per-bin histogram to be worth drawing. Was 50000, which
+# suited the 32.5M-event-per-process dataset; the properly seeded dataset has
+# ~3M independent events per process, where that cut would silently drop the
+# sparse bins (low energy, forward eta) from the plots entirely.
+MIN_STATS_FOR_HISTOGRAM_PLOT = 5000
+
 matplotlib.rcParams.update(
     {
         "font.family": "sans-serif",
@@ -128,7 +134,7 @@ def compute_resolution_for_process(
         total_statistics += n_jets_in_bin
         y_normalized = y / area if area != 0 else y
 
-        if n_jets_in_bin > 50000:
+        if n_jets_in_bin > MIN_STATS_FOR_HISTOGRAM_PLOT:
             for ax in ax_hist:
                 ax.step(
                     edges[:-1],
@@ -257,10 +263,11 @@ for jet_part in jet_parts_to_process:
                     fit_storage_Theta[process] = (
                         popt_theta, pcov_theta, xs_theta, ys_theta, E_theta, sigma_theta, results_theta,
                     )
-                    if total_stats_theta >= 50000:
+                    if total_stats_theta >= MIN_STATS_FOR_HISTOGRAM_PLOT:
                         fig_theta_hist.savefig(os.path.join(outputDir, "bins_theta_{}.pdf".format(process)))
                     else:
-                        print(f"Skipping bins_theta plot for process {process}: N={total_stats_theta} < 50000")
+                        print(f"Skipping bins_theta plot for process {process}: "
+                              f"N={total_stats_theta} < {MIN_STATS_FOR_HISTOGRAM_PLOT}")
 
                     (E_phi, sigma_phi, fig_phi_hist, response_phi, _, results_phi, _, total_stats_phi, bins_phi) = compute_resolution_for_process(
                         proc_data["angles"]["phi"],
@@ -270,10 +277,11 @@ for jet_part in jet_parts_to_process:
                         divide_by_MPV=False,
                         x_label="$\Delta \phi = \phi_{reco} - \phi_{true}$ [rad]",
                     )
-                    if total_stats_phi >= 50000:
+                    if total_stats_phi >= MIN_STATS_FOR_HISTOGRAM_PLOT:
                         fig_phi_hist.savefig(os.path.join(outputDir, "bins_phi_{}.pdf".format(process)))
                     else:
-                        print(f"Skipping bins_phi plot for process {process}: N={total_stats_phi} < 50000")
+                        print(f"Skipping bins_phi plot for process {process}: "
+                              f"N={total_stats_phi} < {MIN_STATS_FOR_HISTOGRAM_PLOT}")
                     clr = PROCESS_COLORS.get(process, f"C{proc_idx}")
                     xs_phi, ys_phi, popt_phi, pcov_phi = fit_resolution_model(
                         E_phi, sigma_phi, model="two_param"
@@ -311,10 +319,11 @@ for jet_part in jet_parts_to_process:
                         divide_by_MPV=False,
                         x_label="$\Delta \eta = \eta_{reco} - \eta_{true}$",
                     )
-                    if total_stats_eta >= 50000:
+                    if total_stats_eta >= MIN_STATS_FOR_HISTOGRAM_PLOT:
                         fig_eta_hist.savefig(os.path.join(outputDir, "bins_deltaEta_{}.pdf".format(process)))
                     else:
-                        print(f"Skipping bins_eta plot for process {process}: N={total_stats_eta} < 50000")
+                        print(f"Skipping bins_eta plot for process {process}: "
+                              f"N={total_stats_eta} < {MIN_STATS_FOR_HISTOGRAM_PLOT}")
                     xs_eta, ys_eta, popt_eta, pcov_eta = fit_resolution_model(
                         E_eta, sigma_eta, model="two_param"
                     )
