@@ -18,6 +18,21 @@ parser.add_argument("--algos", default="durham,calo,ideal,ak,ak-er", metavar="AL
                          "ideal (PF_Durham_IdealMatching), ak (anti-kt radius scan), "
                          "ak-er (anti-kt radius scan with energy recovery). "
                          "Default: durham,calo,ideal,ak,ak-er (all algos)")
+parser.add_argument("--extra-args", default="", metavar="'--flag ...'",
+                    help="Extra arguments appended to every histmaker command, "
+                         "e.g. --extra-args '--no-filter-fully-matched'")
+parser.add_argument("--jobs-dir", default="jobs", metavar="DIR",
+                    help="Where to write the .slurm files (default: jobs). Use a separate "
+                         "directory for side runs so the production job files aren't overwritten")
+parser.add_argument("--account", default="atlas",
+                    help="SLURM account. Node caps are per (account, partition): atlas "
+                         "gets node=5 on roma but only 1 on milano, mli 2/1, neutrino 2/2, "
+                         "so spreading a large submission over several pairs helps a lot.")
+parser.add_argument("--partition", default="milano",
+                    help="SLURM partition (default milano)")
+parser.add_argument("--time", default="10:00:00", metavar="HH:MM:SS",
+                    help="SLURM time limit per job (default: 10:00:00; a run over a small "
+                         "file subset needs far less)")
 args = parser.parse_args()
 
 VALID_ALGOS = {"durham", "calo", "ideal", "ak", "ak-er"}
@@ -41,8 +56,8 @@ error_logs_prefix = (args.logs.rstrip("/") if args.logs else os.path.join(output
 # (i.e., cancelled due to preemption) and re-run them again...
 
 template = """#!/bin/bash
-#SBATCH --partition=milano               # Specify the partition
-#SBATCH --account=atlas                  # Specify the account
+#SBATCH --partition={partition}          # Specify the partition
+#SBATCH --account={account}               # Specify the account
 #SBATCH --mem={memory}                   # Request X GB of memory
 #SBATCH --cpus-per-task={cpus}           # Request X CPU cores
 #SBATCH --nodes=1                        # Request 1 node
@@ -136,8 +151,8 @@ if "ak-er" in selected_algos:
 
 # Make a dir "jobs" if it doesn't exist
 
-if not os.path.exists("jobs"):
-    os.mkdir("jobs")
+if not os.path.exists(args.jobs_dir):
+    os.makedirs(args.jobs_dir)
 
 for command_name in commands:
     for process in process_list:
@@ -145,11 +160,15 @@ for command_name in commands:
         stderr = error_logs_prefix + command_name + "_" + process + ".stderr"
         n_cpus = 10
         memory = 80000
-        time = "10:00:00"
+        time = args.time
         job_name = "{}_{}".format(command_name, process)
         cmd = commands[command_name] + " --only-dataset " + process
+        if args.extra_args:
+            cmd += " " + args.extra_args
         # Now, save the slurm file into jobs/job_name.slurm
         slurm_file_content = template.format(
+            partition=args.partition,
+            account=args.account,
             memory=memory,
             cpus=n_cpus,
             time=time,
@@ -165,7 +184,7 @@ for command_name in commands:
             # Make sure that the file is not corrupted
         ):
             continue
-        filename = "jobs/" + job_name + ".slurm"
+        filename = os.path.join(args.jobs_dir, job_name + ".slurm")
         with open(filename, "w") as f:
             f.write(slurm_file_content)
         print("Saved slurm file", filename)

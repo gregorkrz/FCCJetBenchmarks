@@ -21,8 +21,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--expected-events",
         type=int,
-        default=50000,
-        help="Expected number of events per ROOT file (default: 50000).",
+        default=5000,
+        help="Expected number of events per ROOT file (default: 5000, the "
+             "--events-per-job of the seeded campaign; the older IDEA_20260120 "
+             "dataset used 50000).",
+    )
+    parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="Accept any readable file with at least --min-events entries "
+             "instead of requiring exactly --expected-events. Use this on the "
+             "seeded dataset: Delphes' TrkUtil::CovSmear aborts the process on "
+             "some events, leaving a short but perfectly usable file.",
+    )
+    parser.add_argument(
+        "--min-events",
+        type=int,
+        default=1,
+        help="With --allow-partial, the smallest file worth keeping (default 1).",
     )
     parser.add_argument(
         "--tree",
@@ -164,8 +180,13 @@ def main() -> int:
                 f = ROOT.TFile.Open(path)
                 assert not f.IsZombie(), "file is zombie"
 
-                assert f["events"].GetEntries() == args.expected_events, \
-                    f"events={f['events'].GetEntries()} (expected {args.expected_events})"
+                entries = f["events"].GetEntries()
+                if args.allow_partial:
+                    assert entries >= args.min_events, \
+                        f"events={entries} (minimum {args.min_events})"
+                else:
+                    assert entries == args.expected_events, \
+                        f"events={entries} (expected {args.expected_events})"
                # with uproot.open(path) as f:
                #     tree_name = find_tree_name(f, args.tree)
                #     if not tree_name:
