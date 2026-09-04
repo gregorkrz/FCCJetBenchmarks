@@ -250,28 +250,94 @@ def _model_two_param_quadrature(E, a, b):
     return np.sqrt((a / np.sqrt(E)) ** 2 + b**2)
 
 
+# --- Extra energy-dependence forms found by the fit_trials/ experiments to fit
+# the JER points markedly better than the classic three_param (ranked by
+# leave-one-out CV; see fit_trials/README.md). Param order follows the function
+# signature; `param_names` gives display labels in that same order.
+def _model_logE_4param(E, a, b, c, d):
+    """a/sqrt(E) + b + c/E + d*log(E)  (best CV: extra log(E) drift term)."""
+    return a / np.sqrt(E) + b + c / E + d * np.log(E)
+
+
+def _model_invE15_noise(E, a, b, c, e):
+    """a/sqrt(E) + b + c/E + e/E^1.5  (extra mildly-steeper low-E term)."""
+    return a / np.sqrt(E) + b + c / E + e / E ** 1.5
+
+
+def _model_invE2_noise(E, a, b, c, e):
+    """a/sqrt(E) + b + c/E + e/E^2  (extra steep low-E term)."""
+    return a / np.sqrt(E) + b + c / E + e / E ** 2
+
+
+def _model_logE_invE2_noStoch(E, b, c, e, d):
+    """b + c/E + e/E^2 + d*log(E)  (no 1/sqrt(E) stochastic term)."""
+    return b + c / E + e / E ** 2 + d * np.log(E)
+
+
+def _model_logE_and_invE2(E, a, b, c, e, d):
+    """a/sqrt(E) + b + c/E + e/E^2 + d*log(E)  (5-param; best in-sample MAE)."""
+    return a / np.sqrt(E) + b + c / E + e / E ** 2 + d * np.log(E)
+
+
+_INF = np.inf
+
 RESOLUTION_MODELS = {
     # sigma/E = A/sqrt(E) + B + C/E  (used for jet energy resolution)
     "three_param": dict(
         func=_model_three_param,
         p0=[0.5, 0.03, 0.1],
         bounds=([0.0, 0.0, 0.0], [np.inf, np.inf, np.inf]),
+        param_names=["A", "B", "C"],
     ),
     "three_param_quadrature": dict(
         func=_model_three_param_quadrature,
         p0=[0.5, 0.03, 0.1],
         bounds=([0.0, 0.0, 0.0], [np.inf, np.inf, np.inf]),
+        param_names=["A", "B", "C"],
     ),
     # sigma = A/sqrt(E) + B  (used for angular resolution)
     "two_param": dict(
         func=_model_two_param,
         p0=[0.5, 0.03],
         bounds=([0.0, 0.0], [np.inf, np.inf]),
+        param_names=["A", "B"],
     ),
     "two_param_quadrature": dict(
         func=_model_two_param_quadrature,
         p0=[0.5, 0.03],
         bounds=([0.0, 0.0], [np.inf, np.inf]),
+        param_names=["A", "B"],
+    ),
+    # --- experiment-derived forms (see fit_trials/) ---
+    "logE_4param": dict(
+        func=_model_logE_4param,
+        p0=[0.5, 0.03, 0.1, 0.0],
+        bounds=([0.0, 0.0, 0.0, -_INF], [_INF, _INF, _INF, _INF]),
+        param_names=["A", "B", "C", "D_log"],
+    ),
+    "invE15_noise": dict(
+        func=_model_invE15_noise,
+        p0=[0.5, 0.03, 0.1, 0.01],
+        bounds=([0.0, 0.0, 0.0, 0.0], [_INF, _INF, _INF, _INF]),
+        param_names=["A", "B", "C", "E_15"],
+    ),
+    "invE2_noise": dict(
+        func=_model_invE2_noise,
+        p0=[0.5, 0.03, 0.1, 0.01],
+        bounds=([0.0, 0.0, 0.0, 0.0], [_INF, _INF, _INF, _INF]),
+        param_names=["A", "B", "C", "E_2"],
+    ),
+    "logE_invE2_noStoch": dict(
+        func=_model_logE_invE2_noStoch,
+        p0=[0.03, 0.5, 0.05, 0.0],
+        bounds=([0.0, 0.0, 0.0, -_INF], [_INF, _INF, _INF, _INF]),
+        param_names=["B", "C", "E_2", "D_log"],
+    ),
+    "logE_and_invE2": dict(
+        func=_model_logE_and_invE2,
+        p0=[0.5, 0.03, 0.1, 0.01, 0.0],
+        bounds=([0.0, 0.0, 0.0, 0.0, -_INF], [_INF, _INF, _INF, _INF, _INF]),
+        param_names=["A", "B", "C", "E_2", "D_log"],
     ),
 }
 
@@ -281,26 +347,120 @@ def add_resolution_model(name, func, p0, bounds):
 
 
 def fit_resolution_model(mid_points, values, model="three_param", min_E=0.0,
-                          bounds_override=None, n_curve_points=100):
+                          bounds_override=None, n_curve_points=100, errors=None):
     """Fit a registered energy/angle-dependence model.
 
     Returns (xs, ys, popt, pcov) where xs/ys trace the fitted curve across
     the range of mid_points, and popt/pcov are the fit parameters/covariance
     (popt sign-corrected via abs(), matching the original behaviour).
+
+    If `errors` is given (one 1-sigma uncertainty per point), the fit is
+    weighted by them and `absolute_sigma=True` so `pcov` is on the same
+    absolute scale as `errors` - i.e. sqrt(diag(pcov)) are physically
+    meaningful parameter uncertainties and a chi2/ndf can be computed. Points
+    with a non-finite or non-positive error are dropped (curve_fit rejects
+    sigma<=0), falling back to an unweighted fit if none survive.
     """
     spec = RESOLUTION_MODELS[model]
     mid_points = np.asarray(mid_points, dtype=float)
     values = np.asarray(values, dtype=float)
     mask = mid_points >= min_E
+    if errors is not None:
+        errors = np.asarray(errors, dtype=float)[mask]
     mid_points = mid_points[mask]
     values = values[mask]
+
+    sigma = None
+    absolute_sigma = False
+    if errors is not None:
+        good = np.isfinite(errors) & (errors > 0)
+        if good.all():
+            sigma = errors
+            absolute_sigma = True
+        elif good.any():
+            mid_points, values, sigma = mid_points[good], values[good], errors[good]
+            absolute_sigma = True
+
     bounds = bounds_override if bounds_override is not None else spec["bounds"]
     popt, pcov = curve_fit(
-        spec["func"], mid_points, values, p0=spec["p0"], maxfev=10000, bounds=bounds
+        spec["func"], mid_points, values, p0=spec["p0"], maxfev=10000, bounds=bounds,
+        sigma=sigma, absolute_sigma=absolute_sigma,
     )
     xs = np.linspace(mid_points.min(), mid_points.max(), n_curve_points)
     ys = spec["func"](xs, *popt)
     return xs, ys, np.abs(popt), pcov
+
+
+STAGED_CONST_N_TAIL = 3
+
+
+def fit_resolution_staged_const(mid_points, values, model="three_param", min_E=0.0,
+                                bounds_override=None, n_curve_points=100, errors=None,
+                                n_tail=STAGED_CONST_N_TAIL):
+    """Staged three_param fit: pin the constant from the high-E tail, then fit A/C.
+
+    This is trial 03 of fit_trials/ ("staged_const_first"). Step 1 estimates the
+    constant term b as the mean of sigma/E over the `n_tail` highest-energy
+    points, where a/sqrt(E) and c/E have died away so sigma/E ~ b. Step 2 holds
+    b fixed and fits a/sqrt(E) + c/E to all points (weighted by `errors` when
+    given, exactly as fit_resolution_model does).
+
+    Returns the same (xs, ys, popt, pcov) tuple as fit_resolution_model, with
+    popt in _model_three_param signature order [a, b, c], so downstream code can
+    treat the output as an ordinary three_param fit. Two differences from
+    fit_resolution_model, both deliberate:
+      - pcov's b row/column is zero: b is not a free parameter of the
+        least-squares step, so it carries no fit uncertainty.
+      - popt keeps its fitted sign (no abs()), so the returned curve, popt and
+        any chi2 computed from popt stay mutually consistent.
+    `bounds_override` is accepted for signature compatibility and ignored - the
+    trial this reproduces is unbounded by construction.
+    """
+    if model != "three_param":
+        raise ValueError(f"fit_resolution_staged_const only fits three_param, got {model!r}")
+    spec = RESOLUTION_MODELS[model]
+    mid_points = np.asarray(mid_points, dtype=float)
+    values = np.asarray(values, dtype=float)
+    mask = mid_points >= min_E
+    if errors is not None:
+        errors = np.asarray(errors, dtype=float)[mask]
+    mid_points = mid_points[mask]
+    values = values[mask]
+
+    # the tail estimate is only meaningful on energy-ordered points
+    order = np.argsort(mid_points)
+    mid_points, values = mid_points[order], values[order]
+    if errors is not None:
+        errors = errors[order]
+    if mid_points.size < n_tail + 1:
+        raise ValueError(
+            f"staged fit needs >= {n_tail + 1} points (n_tail={n_tail}), got {mid_points.size}"
+        )
+    b = float(np.mean(values[-n_tail:]))
+
+    sigma = None
+    absolute_sigma = False
+    if errors is not None:
+        good = np.isfinite(errors) & (errors > 0)
+        if good.all():
+            sigma = errors
+            absolute_sigma = True
+        elif good.any():
+            mid_points, values, sigma = mid_points[good], values[good], errors[good]
+            absolute_sigma = True
+
+    popt_ac, pcov_ac = curve_fit(
+        lambda E, a, c: spec["func"](E, a, b, c), mid_points, values,
+        p0=[spec["p0"][0], spec["p0"][2]], maxfev=10000,
+        sigma=sigma, absolute_sigma=absolute_sigma,
+    )
+    a, c = popt_ac
+    popt = np.array([a, b, c])
+    pcov = np.zeros((3, 3))
+    pcov[np.ix_([0, 2], [0, 2])] = pcov_ac
+    xs = np.linspace(mid_points.min(), mid_points.max(), n_curve_points)
+    ys = spec["func"](xs, *popt)
+    return xs, ys, popt, pcov
 
 
 def downsample_for_dashboard(y, edges, max_points=150):
