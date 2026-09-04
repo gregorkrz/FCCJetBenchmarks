@@ -16,6 +16,7 @@ def filter_MC_and_reco_particles(df):
         "reco_mc_links",
         "FCCAnalyses::ZHfunctions::getRP2MC_index(_RecoMCLink_from.index, _RecoMCLink_to.index, ReconstructedParticlesEtaFilter, Particle, ReconstructedParticlesToEtaFilterRPIndex)",
     )
+    df = df.Define("rp2mc", "reco_mc_links.first")
     df = df.Define("mc2rp", "reco_mc_links.second")
 
     return df

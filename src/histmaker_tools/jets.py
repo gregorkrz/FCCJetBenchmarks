@@ -147,6 +147,16 @@ def compute_jets_from_args(df, args, N_jets):
             output_name="FastJet_jets_reco",
             **kwargs,
         )
+    # In a plain reco run, also build the ideal-matching jets (gen-jet grouping
+    # with the PFlow partners of each constituent). Having both jet definitions
+    # in the *same* run is what makes it possible to require the Higgs jets to be
+    # found by both, so the mH definitions can be compared on identical events.
+    df = df.Define("_have_alt_jets", "true")
+    if not args.ideal_matching and args.jet_algorithm != "CaloJetDurham":
+        df = get_jets_from_MC_reco_links(
+            df, output_name="FastJet_jets_ideal", gen_jet_input="FastJet_jets"
+        )
+
     first_k = N_jets
     df = df.Define(
         "GenJetFastJet",
@@ -176,4 +186,11 @@ def compute_jets_from_args(df, args, N_jets):
         )
     else:
         df = df.Define("RecoJetFastJet", "FastJet_jets_reco")
+    if not args.ideal_matching and args.jet_algorithm != "CaloJetDurham":
+        df = df.Define(
+            "IdealJetFastJet",
+            "FCCAnalyses::ZHfunctions::fastjet_to_vec_rp_jet(FastJet_jets_ideal, {})".format(
+                first_k
+            ),
+        )
     return df
