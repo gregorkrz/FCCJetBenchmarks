@@ -1,6 +1,13 @@
 # FCCJetBenchmarks
 Jet performance benchmark toolkit using the FCCAnalysis framework.
 
+> [!TIP]
+> ### 📊 [Interactive dashboard](https://d197we12tlgfrq.cloudfront.net/FCCJetBenchmarks/dashboard.html)
+> All results in one browsable page: jet energy and angular resolution, Higgs-mass
+> peaks, one-click comparison presets, and a Statistics tab with fit coefficients,
+> event counts and filter pass rates.
+> **https://d197we12tlgfrq.cloudfront.net/FCCJetBenchmarks/dashboard.html**
+
 ## Overview
 
 This toolkit provides a comprehensive benchmarking framework for evaluating jet reconstruction performance in $e^+e^-$ collisions at the Future Circular Collider (FCC). The analysis focuses on ZH production processes at $\sqrt{s} = 240$ GeV, comparing different jet clustering algorithms (Durham, anti-kt, and generalized $e^+e^-$ anti-kt) and reconstruction approaches (particle flow vs. calorimeter jets).
@@ -26,6 +33,15 @@ Numba may be installed locally with the following command:
 pip install numba -t .
 ```
 
+### Docker image
+
+`docker/Dockerfile` defines a base environment image, published to Docker Hub as
+[`gkrz/fccanalysis_env:latest`](https://hub.docker.com/r/gkrz/fccanalysis_env). The
+`.github/workflows/docker-publish.yml` GitHub Actions workflow automatically rebuilds and pushes this image
+whenever `docker/Dockerfile` changes on `main` (or can be triggered manually via "Run workflow"). It requires
+the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository secrets to be set under
+Settings → Secrets and variables → Actions.
+
 ## Quickstart
 
 0. **Set up the environment.** This repo uses the [FCCAnalyses framework](https://hep-fcc.github.io/FCCAnalyses/).
@@ -36,9 +52,15 @@ source /cvmfs/sw.hsf.org/key4hep/setup.sh -r 2025-05-29
 
 1. **Run the histmaker:**
 Submit the slurm jobs for each process and each method using the following command:
-`python scripts/generate_analysis_jobs.py`.
+```bash
+python scripts/generate_analysis_jobs.py --input $PATH_TO_DATASET --output $PATH_TO_HISTOGRAMS
+```
 
-The script needs to be modified such that the dataset and output paths are correct.
+Useful flags:
+- `--algos ALGO1,ALGO2,...` — comma-separated list of clustering-algorithm families to generate jobs for. Choices: `durham` (PF_Durham), `calo` (CaloJets_Durham), `ideal` (PF_Durham_IdealMatching), `ak` (anti-kt radius scan), `ak-er` (anti-kt radius scan with energy recovery). Defaults to `durham,calo,ideal,ak,ak-er` (all algos).
+- `--logs PATH_TO_LOGS` — directory for SLURM stdout/stderr logs (default: `$PATH_TO_HISTOGRAMS/logs`).
+- `--no-submit` — write the SLURM job files but don't submit them with `sbatch`.
+- `--rerun-all` — submit all jobs, even those whose output ROOT file already exists (by default, jobs with an existing non-empty output file are skipped).
 
 The histmaker scripts produce a ROOT file with histograms for each process and each jet algorithm.
 
@@ -56,7 +78,9 @@ bash scripts/create_plots.sh $PATH_TO_HISTOGRAMS
 ```
 
 The `create_plots.sh` script computes energy resolution plots and produces detailed plots of different jet-level
-and event-level metrics for each folder in `PATH_TO_HISTOGRAMS` (each clustering method).
+and event-level metrics for each folder in `PATH_TO_HISTOGRAMS` (each clustering method). It ends with the
+interactive dashboard, the presentation JER figures (including the fit-free `JER_points_only` grids) and the
+$m_H$ decomposition figures, so a single invocation regenerates everything.
 
 
 ## Dataset
@@ -100,6 +124,47 @@ process has its own folder, and the files in the folder are named according to t
 ```bash
 python scripts/organize_dataset_per_process.py --base PATH_TO_DATASET
 ```
+
+#### Random seeds (important)
+
+`run_fastsim.py` writes a **per-job copy of the Pythia card with its own `Random:seed`**
+(`write_seeded_pythia_card`, seed = per-process offset + job index, so a re-run of a job reproduces its
+events). Without it Pythia8 defaults to `Random:setSeed = off` and every job generates the *identical*
+event sequence.
+
+> [!WARNING]
+> The `IDEA_20260120` dataset predates this fix: all ~650 files of a process hold the **same 50k
+> generated events**, differing only in the Delphes smearing (its RNG is not seeded from the card). Its
+> gen-level distributions therefore have the statistical power of 50k events, not 32.5M — measurably so:
+> the bin-to-bin scatter of `h_mH_gen` is √650 ≈ 26 times the Poisson expectation. Reco-level quantities
+> are smooth but still only ~50k independent in anything driven by generator-level physics.
+
+Jobs can die partway: Delphes' `TrkUtil::CovSmear` aborts the process on some events (leaving a short but
+readable file) and 6-jet jobs need ~5.5 GB. Use `--events-per-job 5000` to bound the loss and keep the
+default `--mem 10G`. `scripts/supervise_fastsim.py` automates a campaign - every 10 minutes it counts the
+usable events per process, submits anything that was generated but never accepted by slurmctld, and tops
+up whatever is short until each process reaches a goal:
+
+```bash
+python scripts/make_subset_dataset.py ...        # optional: a small symlinked subset
+setsid nohup python scripts/supervise_fastsim.py --dataset $PATH_TO_DATASET_NEW \
+    --goal 3000000 --max-queued 500 &            # log: <dataset>/supervisor.log
+```
+
+Retries always use a *fresh* job index: the seed is derived from it, so re-running a crashed index would
+regenerate the same events and hit the same crash. Jobs are spread round-robin over several
+`(account, partition)` pairs, because the node caps are per association (`atlas` gets `node=5` on roma
+but only 1 on milano) - that alone was worth a factor ~4 in throughput. Files whose job was OOM-killed
+are unreadable and must be removed before the histmaker runs (FCCAnalyses opens every input file to
+count entries and aborts on the first bad one):
+
+```bash
+python scripts/find_corrupted_root_files.py $PATH_TO_DATASET_NEW --allow-partial \
+    --output $PATH_TO_DATASET_NEW/corrupted.txt
+```
+
+`--allow-partial` accepts the legitimately short files from a `TrkUtil` abort and flags only unreadable
+or empty ones.
 
 ### Input file format
 
@@ -239,7 +304,11 @@ Print the basic statistics of the produced datasets:
 python src/plotting/print_basic_stats.py --inputDir $PATH_TO_HISTOGRAMS
 ```
 
-The plotting scripts are split into three steps: 
+In addition to `filter_pass_rate_table.md` (and `_clean.md` with `--important-only`), this writes
+`basic_stats_summary.json` (raw event counts and pass rate, per process/method) at the top of `$PATH_TO_HISTOGRAMS`,
+consumed by `build_dashboard_data.py` for the dashboard's Statistics tab.
+
+The plotting scripts are split into the following steps:
 
 * Basic debugging plots (placed in the subfolder `plots_debug`):
 
@@ -249,16 +318,89 @@ fccanalysis plots src/plotting/debugging_plots.py -- --inputDir $PATH_TO_HISTOGR
 
 This step is optional, but creates plots with basic statistics of the jets and events to quickly identify any issues.
 
+* **Resolution histogram extraction** (the only resolution-related step that needs ROOT). Reads the per-bin
+  histograms from the ROOT files in `METHOD_NAME` and dumps their raw content (bin edges + counts) to
+  `plots_resolution/resolution_histograms.pkl`:
 
-* energy resolution plots (placed in `plots_resolution`):
+```bash
+python src/plotting/extract_resolution_data.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
+```
+
+* **Resolution fitting and plotting** (placed in `plots_resolution`). This step is ROOT-free, only needs the
+  pickle produced above, runs entirely locally, and is cheap enough to re-run repeatedly while experimenting with
+  fitting algorithms:
+
 ```bash
 python src/plotting/resolution_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
 ```
+
+  In addition to the resolution PDFs and the `energy_fit_params_per_process.pkl` / `angle_fit_params_per_process.pkl`
+  files (consumed by `joint_plots.py`), this step also writes `plots_resolution/resolution_dashboard_data.pkl`,
+  a richer pickle containing per-energy-bin histograms and fit results, used by the interactive dashboard below.
 
 * Reconstructed $m_H$ plots (placed in `plots_mass`):
 ```bash
 python src/plotting/mass_plots.py --inputDir $PATH_TO_HISTOGRAMS/METHOD_NAME
 ```
+
+  In addition to the mH PDFs and `Higgs_mass_histograms_data.pkl`, this step also writes
+  `plots_mass/mass_dashboard_data.pkl`: downsampled reco/gen/GT/reco-GT-matched mH histograms plus a Gaussian fit
+  of the reco mH peak, used by the interactive dashboard below.
+
+* **$m_H$ decomposition: invisible loss vs. detector vs. jet definition vs. reco clustering** (placed in `plots/mh_decomposition`).
+  Overlays a nested ladder of $m_H$ definitions, one panel per process, in the same 3x5 grid as the JER
+  "full plots" (rows = 2/4/6 jets, columns = increasing B-hadron content), so each contribution to the peak
+  width can be read off separately:
+
+  | curve | method dir | histogram | what it adds |
+  |---|---|---|---|
+  | Invisible loss ($\nu$) | `PF_Durham` | `h_mH_stable_gt_particles` | visible final-state gen particles from the H, i.e. the neutrino loss from semileptonic heavy-flavour decays (the H natural width is zero in these samples). The only curve without the $\|\eta\|<2.56$ cut |
+  | + Detector | `PF_Durham` | `h_mH_reco_particles_matched` | each of those gen particles replaced by its `RecoMCLink` partner: efficiency, $\|\eta\|<2.56$ acceptance, smearing. **No jets**, so no assignment error can enter |
+  | + Jet definition | `PF_Durham_IdealMatching` | `h_mH_reco` | the cost of partitioning the event into jets: gen jets with every constituent replaced by its reco partner, H jets by parton matching. Mixes irreducible QCD radiation with the clustering convention |
+  | + Reco-jet clustering & matching | `PF_Durham` | `h_mH_reco` | the reco particles are clustered into jets and the H jets found by $\Delta R$ matching - the standard reco $m_H$. Adds particle-level misassignment *and* jet matching (incl. its event loss) |
+
+  The same three PFlow-based curves are also emitted under a second, blunter naming scheme
+  (`mH_decomposition_pflow*.pdf`), where every curve is built from PFlow objects and they differ only in how
+  those objects are grouped into the Higgs candidate - `Detector` (perfect grouping from MC ancestry),
+  `Physics` (grouping from the truth jets) and `Detector + Physics` (everything reco). A third scheme with
+  short labels for slides lives in `mH_decomposition_simple*.pdf`. Every grid figure comes in two
+  orientations: the default has the flavour along the row, `*_by_jets` has 2/4/6 jets along the row so a
+  whole row can be lifted onto a poster.
+
+  Those three definitions each drop a different set of events (only `Detector` is defined for every event),
+  so they are not directly comparable as they stand. `h_mH_common_{detector,ideal,reco}` fix that: the
+  histmaker builds the ideal-matching jets *alongside* the reco ones in a plain reco run and fills the trio
+  only for events where both jet definitions found all the Higgs jets. That intersection cannot be done
+  after the fact from per-method histograms, so it needs one `--algos durham` run; when those histograms are
+  present the plotting step adds `mH_decomposition_pflow_common*.pdf`.
+
+  All four already come out of the histmaker with identical binning (1000 bins, 0-250 GeV), so this step only
+  reads and draws them. It reads the histmaker ROOT files directly with `uproot`, so unlike `mass_plots.py` it
+  needs neither ROOT nor the container, and it does not depend on the rest of the plotting pipeline:
+
+```bash
+python src/plotting/mh_decomposition_plots.py --inputDir $PATH_TO_HISTOGRAMS
+```
+
+  It also writes `mH_jet_multiplicity.pdf`, a multi-page PDF turning the grid inside out: one canvas per
+  $m_H$ definition with the 2-, 4- and 6-jet processes overlaid, once for the grid's light-flavour column
+  (`vvqq` / `qqqq` / `6jet_LF`) and once for its b-jet-rich edge (`vvbb` / `bbbb` / `6jet_HF`), each in both
+  the linear-zoom and log-wide range (16 pages). The legend says just "2/4/6 jets"; a caption names the
+  process behind each.
+
+  Writes four PDFs - three curves and 3+1 curves (adding the invisible-loss baseline), each as a linear zoom (80-150 GeV,
+  the window of the other mH plots) and a log-y wide version (60-200 GeV) that shows the Z-jet contamination
+  shoulder and the low-mass tails - plus `mh_decomposition_summary.md`/`.csv` with $\mu$, $\sigma$, median,
+  68% half-width and the fraction of events for which each definition is defined, and a `README.md` recording
+  the provenance of every curve. Useful flags: `--rebin N` (merge N of the 0.25 GeV bins for drawing; the
+  quoted numbers always use the full resolution), `--reco-hist h_mH_reco_fixed` and `--compare-fixed`
+  (see below), `--zoom-range`/`--wide-range`, `--processes`.
+
+  Note that the two jet-based curves are only filled for events in which all Higgs jets were successfully
+  parton-matched (37% of 6-jet events, 84% of `Z(→νν)H(→bb)`), and that the default fully-matched filter
+  passes different fractions of events in the two method directories. Every curve is normalized to unit area
+  and its kept fraction is reported as `kept_frac` in the summary table. For an apples-to-apples sample, re-run the two
+  methods over a file subset with the filter disabled (see [Quick subset runs](#quick-subset-runs)).
 
 * Matrix plots of different metrics on which all the physics processes are summarized:
 ```bash
@@ -271,6 +413,133 @@ python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --AK-compariso
 
 ```
 
+* **Interactive dashboard**. Once `extract_resolution_data.py` + `resolution_plots.py` + `mass_plots.py` have been
+  run for every method subfolder and `print_basic_stats.py --all-folders` has been run once, consolidate all their
+  pickles/JSON into a single JSON, then generate a self-contained HTML dashboard from it:
+
+```bash
+python src/plotting/build_dashboard_data.py --inputDir $PATH_TO_HISTOGRAMS
+python src/plotting/make_interactive_dashboard.py --data $PATH_TO_HISTOGRAMS/plots/dashboard_data.json
+```
+
+  This produces the following under `$PATH_TO_HISTOGRAMS/plots/`:
+  - `dashboard.html`: a single HTML file (Plotly.js via CDN, vanilla JS, no build step or server needed — just
+    open it in a browser). Everything except the full-resolution histograms (see below) is inlined into this file.
+  - `full_hist/`: one small JSON file per full-resolution (non-downsampled) histogram — one per per-bin
+    energy/angle/eta/costheta histogram and one per Higgs-mass definition — kept out of dashboard.html and fetched
+    lazily, one file at a time, only for the exact histogram currently on screen when you ask to see it (see "Full
+    vs. downsampled histograms" below). Keep this folder next to dashboard.html.
+
+  dashboard.html has two tabs:
+
+  **Explorer tab:**
+  - Multi-select which methods (jet clustering algorithms / detectors), processes, and quantity (jet-part energy
+    resolution, angular resolution, eta/cos(theta) scans, or Higgs mass) to overlay.
+  - The Higgs mass quantity plots the reco mH histogram (with its Gaussian peak fit overlaid) for each selected
+    method/process; select a single (method, process) combination to instead see all four mH definitions overlaid
+    (reco / gen / GT / reco-GT matched), same as `plots_mass/log_Higgs_mass_reco_vs_gen.pdf`.
+  - One-click presets mirroring comparisons already made in `joint_plots.py` and in `presentation.pdf`: jet
+    multiplicity (2/4/6 jets), clustering algorithm scan (Durham vs. anti-kt radii), detector/matching comparison
+    (PF vs. Calo vs. ideal matching), energy recovery on/off (paired by anti-kt radius), B-hadron content scan
+    (colored by the `process_config.py` flavour convention), and two Higgs-mass presets (clustering algorithm scan,
+    detector comparison) showing the mH peak shift directly. Presets are computed from whatever methods/processes
+    are actually present, so they degrade gracefully if a comparison's methods aren't in your dataset.
+  - Pick custom colors per (method, process) curve (defaults: `process_config.py` colors, or an auto-cycled
+    fallback), or click "Auto colors" to clear any manual overrides and assign every currently-selected combo an
+    evenly-spaced hue around the color wheel, guaranteeing they're all visually distinct from each other (unlike
+    the `process_config.py` defaults, which can make two different methods showing the same process look
+    identical).
+  - "All"/"None" buttons above the Methods and Processes lists, plus "2-jet"/"4-jet"/"6-jet" quick-select buttons
+    for Processes (using `process_config.py`'s `NUMBER_OF_JETS`).
+  - **"Show fit curve(s)"** checkbox to toggle the dashed fit overlay on/off, and a **"Fit model"** dropdown to
+    switch the energy/angular resolution fit between the 3-parameter (`S/sqrt(E) + B + C/E`) and 2-parameter
+    (`S/sqrt(E) + C`) forms — both are fit in `resolution_plots.py` up front (see `RESOLUTION_MODELS` in
+    `resolution_methods.py`), so switching models in the dropdown is instant, no refitting happens in the browser.
+    Currently `std68` (`resolution_plots.py`'s hardcoded `for method in ["std68"]:` loop) is the only sigma-
+    extraction method actually computed; this dropdown only switches the energy-dependence *fit form*, not the
+    per-bin sigma estimator.
+  - Click on any point in the resolution plot to toggle its underlying histogram on/off in a secondary plot,
+    with vertical lines at the fitted low/high/MPV values. Clicking multiple points overlays their histograms
+    (each in its own color, with an optional normalize toggle) so bins/methods/processes can be compared side
+    by side; a selection list lets you remove individual histograms or clear them all.
+  - **Full vs. downsampled histograms**: both the click-to-drill per-bin histograms and the Higgs mass histograms
+    are downsampled (capped at ~150-200 points) inside `dashboard.html` itself to keep the page small. Check
+    "Show full-resolution histograms" to lazily `fetch()`, one small JSON file at a time from `full_hist/`, only
+    the exact histogram(s) currently displayed (e.g. 5000 bins for a per-energy-bin `E_reco/E_true` histogram),
+    each cached after its first fetch — toggling other points/definitions on screen fetches just those, not the
+    entire full-resolution dataset. This only works when dashboard.html and `full_hist/` are served over http(s)
+    — opening dashboard.html directly via `file://` will usually have the fetch blocked by the browser's CORS
+    policy for local files; a failed fetch shows an error next to the checkbox and that histogram falls back to
+    its downsampled view.
+  - A "Download raw JSON data" button re-offers the page's inlined data as a `dashboard_data.json` download, so
+    the underlying numbers can be pulled into another notebook/script without re-running the pipeline (this does
+    not include the full-resolution histograms - fetch the relevant file(s) under `full_hist/` separately for
+    those).
+  - **The whole view is saved in the URL**: every selection (methods/processes, quantity, fit controls, colors,
+    drilled-down histogram points, active tab) is base64url-encoded into the URL hash after each change (via
+    `history.replaceState`, so it doesn't spam browser history or trigger a reload), and restored from it on
+    load. Bookmark or share the URL to reproduce the exact same view; browser back/forward also restores prior
+    views. No server involved - it's purely a `location.hash` round-trip.
+
+  **Statistics tab:** three tables built from the same underlying data — fit coefficients (JER/angular S/N/C
+  parameters for both the two-param and three-param fits, and the Higgs mass peak's fitted mean/sigma, for every
+  method/process/quantity), raw event counts (before/after the fully-matched filter), and the filter pass-rate
+  table (same numbers as `filter_pass_rate_table.md`, with the best value per row bolded).
+
+  `scripts/create_plots.sh` runs both of these steps automatically at the end of the pipeline. Pass `--html-only`
+  to skip straight to these two steps (using pickles/JSON already on disk from a prior full run) when iterating on
+  the dashboard itself:
+
+```bash
+bash scripts/create_plots.sh --html-only $PATH_TO_HISTOGRAMS
+```
+
+  Each process's fit is wrapped in a try/except in `resolution_plots.py`: if `curve_fit` fails to converge for one
+  process, only that process is skipped (with a warning printed) instead of crashing the whole script and losing
+  `resolution_dashboard_data.pkl` (and therefore that entire method) from the dashboard. If a method is missing
+  from the dashboard entirely, check whether `plots_resolution/resolution_dashboard_data.pkl` exists for it and
+  whether `resolution_plots.py`'s stdout/log mentions a skipped process.
+
+### Adding new resolution fitting algorithms
+
+`src/plotting/resolution_methods.py` is the single place where per-bin resolution-extraction methods and
+energy/angle-dependence fit models are registered, so new algorithms can be added without touching
+`resolution_plots.py`:
+
+* To add a new way of turning a histogram into a resolution number, write a function with signature
+  `(y, edges, wmin=0.7, wmax=1.2, **kwargs) -> (sigma, low, high, mpv)` (or `None` on failure) and register it:
+  ```python
+  def sigma_my_method(y, edges, wmin=0.7, wmax=1.2, **kwargs):
+      ...
+      return sigma, low, high, mpv
+  SIGMA_METHODS["my_method"] = sigma_my_method
+  ```
+  Then pass `sigma_method="my_method"` where `compute_resolution_for_process(...)` is called.
+
+* To add a new functional form for how the resolution depends on energy/angle, register it in
+  `RESOLUTION_MODELS`:
+  ```python
+  def my_model(E, a, b):
+      return a * E + b
+  RESOLUTION_MODELS["my_model"] = dict(func=my_model, p0=[1.0, 0.0],
+                                        bounds=([-np.inf, -np.inf], [np.inf, np.inf]))
+  ```
+  Then pass `model="my_model"` to `fit_resolution_model(...)`.
+
+`SIGMA_METHODS` and `RESOLUTION_MODELS` are plain dicts (with `add_sigma_method()` / `add_resolution_model()`
+helpers), so both can also be extended from a separate local script without modifying this repo.
+
+The same file also registers `PEAK_FIT_MODELS` (currently `"gaussian"` and `"dscb"`, a double-sided Crystal Ball),
+used by `fit_peak(x_vals, y_vals, model=..., window=...)` to fit the Higgs mass peak in `mass_plots.py`. Add a new
+mH fitting method the same way as above:
+```python
+def my_peak_model(x, ...params):
+    ...
+PEAK_FIT_MODELS["my_peak_model"] = dict(func=my_peak_model, n_params=...)
+```
+Then pass `model="my_peak_model"` to `fit_peak(...)`. The fitted `popt`/model name flow straight through to the
+dashboard's Statistics tab and the Higgs mass quantity's fit overlay, with no other code changes needed.
+
 ### Output format
 
 The histmaker produces ROOT files containing histograms for each process. Each output directory (corresponding to a jet algorithm) contains:
@@ -279,10 +548,18 @@ The histmaker produces ROOT files containing histograms for each process. Each o
 
 The plotting scripts generate the following folders for each jet clustering method:
 - **`plots_debug/`**: Basic diagnostic plots (optional)
-- **`plots_resolution/`**: Jet energy and angular resolution plots
-- **`plots_mass/`**: Reconstructed Higgs mass distributions
+- **`plots_resolution/`**: Jet energy and angular resolution plots, plus `resolution_histograms.pkl`
+  (raw per-bin histograms, from `extract_resolution_data.py`), `energy_fit_params_per_process.pkl` /
+  `angle_fit_params_per_process.pkl` (consumed by `joint_plots.py`), and `resolution_dashboard_data.pkl`
+  (consumed by `build_dashboard_data.py`; each bin/fit entry carries both a downsampled and a full-resolution
+  copy, the latter split back out into its own file under `full_hist/` rather than inlined in the light JSON)
+- **`plots_mass/`**: Reconstructed Higgs mass distributions, plus `mass_dashboard_data.pkl` (downsampled +
+  full-resolution mH histograms and the Gaussian peak fit, also consumed by `build_dashboard_data.py`)
 
-In addition to this, the summary plots comparing different methods are generated in folder **`plots/`**.
+In addition to this, `print_basic_stats.py --all-folders` writes `basic_stats_summary.json` at the top of
+`$PATH_TO_HISTOGRAMS` (raw event counts + pass rate per process/method), and the summary plots comparing
+different methods, as well as the consolidated `dashboard_data.json`, the per-histogram `full_hist/` folder, and
+the interactive `dashboard.html`, are generated in folder **`plots/`**.
 
 ## Project Structure
 
@@ -298,7 +575,11 @@ FCCJetBenchmarks/
 │   │   ├── event_level_statistics.py
 │   │   └── ...
 │   └── plotting/                 # Plotting scripts
-│       ├── resolution_plots.py   # Energy/angular resolution
+│       ├── extract_resolution_data.py  # Stage 1: ROOT -> raw histograms pickle
+│       ├── resolution_methods.py       # Pluggable sigma methods / fit models registry
+│       ├── resolution_plots.py         # Stage 2: histograms -> resolution fits/plots (ROOT-free)
+│       ├── build_dashboard_data.py     # Stage 3: consolidate all methods into one JSON
+│       ├── make_interactive_dashboard.py  # Stage 4: JSON -> self-contained HTML dashboard
 │       ├── mass_plots.py         # Higgs mass reconstruction
 │       ├── joint_plots.py        # Summary matrix plots
 │       └── ...
@@ -312,6 +593,13 @@ FCCJetBenchmarks/
 
 
 ## Main results
+
+> [!TIP]
+> **[Open the live interactive dashboard](https://d197we12tlgfrq.cloudfront.net/FCCJetBenchmarks/dashboard.html)** — explore jet
+> energy/angular resolution and Higgs mass plots across every process and jet-clustering method, apply one-click
+> presets, and check the Statistics tab for fit coefficients, event counts, and filter pass rates. Rebuilt by
+> `scripts/create_plots.sh` (see [Interactive dashboard](#plotting-scripts) below); use `--html-only` to rebuild
+> just the dashboard after a full run.
 
 See [RESULTS.md](RESULTS.md) for the main results obtained with this framework and the provided dataset.
 
@@ -331,6 +619,48 @@ See [RESULTS.md](RESULTS.md) for the main results obtained with this framework a
 have been moved to `jet_tools.h` and `utils.h`.
 
 ## Advanced Usage
+
+### Quick subset runs
+
+The full dataset is ~650 files x 50k events per process, far more than a peak-shape study needs. To iterate
+quickly, symlink a subset (keeping the per-process-subdirectory layout the histmaker expects) and run the
+histmaker against it:
+
+```bash
+python scripts/make_subset_dataset.py --input $PATH_TO_DATASET \
+  --output ${PATH_TO_DATASET}_subset20 --files-per-process 20      # ~1M events per process
+
+python scripts/generate_analysis_jobs.py --algos durham,ideal \
+  --input ${PATH_TO_DATASET}_subset20 \
+  --output ${PATH_TO_HISTOGRAMS}_subset20_nofilter \
+  --jobs-dir jobs_subset20 --time 02:00:00 "--extra-args=--no-filter-fully-matched"
+```
+
+`--jobs-dir` keeps the side run's `.slurm` files away from the production ones in `jobs/`, `--time` shortens
+the SLURM limit, and `--extra-args` appends arbitrary flags to every histmaker command (note the
+`--extra-args=--flag` form: a value starting with `-` has to be attached with `=`).
+
+### The parton -> reco-jet mapping fix
+
+`truth_matching.py` selects the Higgs jets by composing the parton->genjet matching with
+`reco_gen_jet_matching`, which is a **reco->gen** map, so it only lands on the right reco jet where that
+permutation is its own inverse - identity or pure pairwise swaps are fine, a cycle of length >= 3 picks a
+wrong (but same-size) jet subset and the event survives with a wrong mass, typically in the high tail. Two
+jets can never form such a cycle, so 2-jet processes are unaffected; measured on the 6-jet processes, ~2-3%
+of the entries move.
+
+`inv_mass_reco_fixed` / `h_mH_reco_fixed` redo the selection with a genuine gen->reco greedy matching (run in
+that direction rather than inverted, since greedy matching is not symmetric) and are filled alongside the
+original ones, so both can be compared on identical events:
+
+```bash
+python src/plotting/mh_decomposition_plots.py --inputDir ${PATH_TO_HISTOGRAMS}_subset20_nofilter \
+  --reco-hist h_mH_reco_fixed --compare-fixed
+```
+
+This draws the decomposition from the corrected histograms and adds `mH_mapping_fix_comparison*.pdf` plus
+`mh_mapping_fix_summary.md`/`.csv` overlaying old vs. fixed for both methods. The histograms produced before
+this change (i.e. everything currently under `$PATH_TO_HISTOGRAMS`) still use the old mapping.
 
 ### Custom jet matching radius
 
@@ -393,4 +723,8 @@ fccanalysis run src/histmaker.py -- \
 [4] Bierlich, C., Chakraborty, S., Desai, N., Gellersen, L., Helenius, I., Ilten, P., Lönnblad, L., Mrenna, S., Prestel, S., Preuss, C. T., Sjöstrand, T., Skands, P., Utheim, M., & Verheyen, R. (2022). A comprehensive guide to the physics and usage of PYTHIA 8.3. ArXiv. https://arxiv.org/abs/2203.11601
 
 [5] Cacciari, Matteo, et al. “The Anti-K_t Jet Clustering Algorithm.” arXiv:0802.1189, arXiv, 21 Apr. 2008. arXiv.org, https://doi.org/10.48550/arXiv.0802.1189.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 

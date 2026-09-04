@@ -2,6 +2,10 @@
 
 This document summarizes the results obtained with the framework and provided datasets.
 
+> [!TIP]
+> **[Open the live interactive dashboard](https://d197we12tlgfrq.cloudfront.net/dashboard.html)** for an
+> explorable version of the plots below (including Higgs mass and a Statistics tab with fit coefficients, event
+> counts, and filter pass rates), before diving into the static PDFs.
 
 Individual:
 - [`plots_resolution/jet_energy_resolution_per_process_comparison_Njets_all.pdf`](fig/PF_Durham/jet_energy_resolution_per_process_comparison_Njets_all.pdf): Jet energy resolution (and response) for 2-, 4-, and 6-jet events 

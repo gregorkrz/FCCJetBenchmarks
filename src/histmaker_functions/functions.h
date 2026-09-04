@@ -759,6 +759,77 @@ Vec_rp fastjet_to_vec_rp_jet(JetClustering::FCCAnalysesJet jets, int first_k) {
   return out;
 }
 
+Vec_rp select_higgs_jets_by_provenance(JetClustering::FCCAnalysesJet jets,
+                                       Vec_rp in_particles, vector<int> rp2mc,
+                                       vector<int> gt_labels, int first_k,
+                                       int n_higgs) {
+  /*
+      Return the n_higgs jets carrying the most Higgs energy, deciding from
+      particle provenance instead of an angular match: a constituent counts as
+      "from the Higgs" when its MC partner (rp2mc) is labelled as a descendant
+      of one of the Higgs partons (gt_labels != -1).
+
+      Jets are ranked by the *absolute* Higgs energy they contain, not by the
+      Higgs fraction of their energy: ranking by fraction picks a soft jet made
+      purely of radiation off a Higgs daughter over the hard jet holding most of
+      that daughter's energy, which throws the reconstructed mass far off.
+
+      Jets are pT-sorted and truncated to first_k exactly as in
+      fastjet_to_vec_rp_jet, so the choice is made among the same jets that
+      enter every other jet observable. Unlike the parton/gen-jet dR matching
+      this can never fail to produce n_higgs jets, which is the point: it
+      isolates particle-level misassignment from jet-matching failures.
+  */
+  vector<size_t> indices(jets.jets.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  std::sort(indices.begin(), indices.end(), [&jets](size_t a, size_t b) {
+    float pt_a = std::sqrt(jets.jets[a].px() * jets.jets[a].px() +
+                           jets.jets[a].py() * jets.jets[a].py());
+    float pt_b = std::sqrt(jets.jets[b].px() * jets.jets[b].px() +
+                           jets.jets[b].py() * jets.jets[b].py());
+    return pt_a > pt_b;
+  });
+  size_t n_jets_to_keep =
+      std::min(static_cast<size_t>(first_k), jets.jets.size());
+
+  // (Higgs energy carried, jet index) for each kept jet
+  vector<pair<float, size_t>> ranked;
+  for (size_t i = 0; i < n_jets_to_keep; ++i) {
+    size_t idx = indices[i];
+    float e_higgs = 0.f;
+    for (auto &c_idx : jets.constituents[idx]) {
+      if (c_idx < 0 || c_idx >= (int)in_particles.size() ||
+          c_idx >= (int)rp2mc.size()) {
+        continue;
+      }
+      int mc_idx = rp2mc[c_idx];
+      if (mc_idx >= 0 && mc_idx < (int)gt_labels.size() &&
+          gt_labels[mc_idx] != -1) {
+        e_higgs += in_particles[c_idx].energy;
+      }
+    }
+    ranked.push_back({e_higgs, idx});
+  }
+  std::sort(ranked.begin(), ranked.end(),
+            [](const pair<float, size_t> &a, const pair<float, size_t> &b) {
+              return a.first > b.first;
+            });
+
+  Vec_rp out;
+  size_t n_select = std::min(static_cast<size_t>(n_higgs), ranked.size());
+  for (size_t i = 0; i < n_select; ++i) {
+    auto &j = jets.jets[ranked[i].second];
+    edm4hep::ReconstructedParticleData rp;
+    rp.momentum.x = j.px();
+    rp.momentum.y = j.py();
+    rp.momentum.z = j.pz();
+    rp.energy = j.E();
+    rp.mass = j.m();
+    out.push_back(rp);
+  }
+  return out;
+}
+
 tuple<Vec_rp, Vec_rp, Vec_rp>
 fastjet_to_vec_rp_jet_split_based_on_charge(JetClustering::FCCAnalysesJet jets,
                                             Vec_rp in_particles, int first_k) {

@@ -368,8 +368,8 @@ for method in methods_filtered:
                 label=f"{label} ({method_dict[method]})",
             )
             # Set axes for the plots 1 and 2
-            ax_E_mH_gluons[plot_idx, 2].set_xlabel("$m_H$ (reco.) [GeV]")
-            ax_E_mH_gluons[plot_idx, 1].set_xlabel("$m_H$ (reco.) [GeV]")
+            ax_E_mH_gluons[plot_idx, 2].set_xlabel("$m_H$ [GeV]")
+            ax_E_mH_gluons[plot_idx, 1].set_xlabel("$m_H$ [GeV]")
             ax_E_mH_gluons[plot_idx, 1].set_xlabel("Normalized events")
             ax_E_mH_gluons[plot_idx, 2].set_xlabel("Normalized events")
             n_jets = [2, 4][plot_idx]
@@ -425,6 +425,12 @@ for method in methods_filtered:
             linestyle=method_linestyle[method],
         )
         ax_mH_per_process[row, col].set_title(label)
+        ax_mH_per_process[row, col].text(
+            0.97, 0.95, f"{NUMBER_OF_JETS[process]} jets",
+            transform=ax_mH_per_process[row, col].transAxes, ha="right", va="top",
+            fontsize=16, color="darkred",
+            bbox=dict(facecolor="white", edgecolor="red", linewidth=1.2,
+                      boxstyle="round,pad=0.35"))
         if NUMBER_OF_JETS.get(process) == 2 and method == "PF_Durham":
             ax_mH_twojets[0, 0].hist(
                 Higgs_x,
@@ -533,8 +539,8 @@ for i in range(len(ax_E_mH_gluons)):
 
 for i in range(len(ax_mH)):
     for j in range(len(ax_mH[i])):
-        ax_mH[i, j].set_xlabel("$m_H$ (reco.) [GeV]")
-        ax_mH[i, j].set_xlabel("$m_H$ (reco.) [GeV]")
+        ax_mH[i, j].set_xlabel("$m_H$ [GeV]")
+        ax_mH[i, j].set_xlabel("$m_H$ [GeV]")
         ax_mH[i, j].grid()
     ax_mH[i, 2].set_xlim(60, 180)
     ax_mH[i, 2].set_yscale("log")
@@ -543,7 +549,7 @@ for i in range(len(ax_mH)):
 
 for j in range(len(ax_mH_twojets)):
     for i in range(len(ax_mH_twojets[0])):
-        ax_mH_twojets[j, i].set_xlabel("$m_H$ (reco.) [GeV]")
+        ax_mH_twojets[j, i].set_xlabel("$m_H$ [GeV]")
         ax_mH_twojets[j, i].grid()
         ax_mH_twojets[j, i].set_xlim(100, 140)
         ax_mH_twojets[j, i].legend(
@@ -552,7 +558,7 @@ for j in range(len(ax_mH_twojets)):
 
 for j in range(len(ax_mH_per_process)):
     for i in range(len(ax_mH_per_process[j])):
-        ax_mH_per_process[j, i].set_xlabel("$m_H$ (reco.) [GeV]")
+        ax_mH_per_process[j, i].set_xlabel("$m_H$ [GeV]")
         ax_mH_per_process[j, i].grid()
         ax_mH_per_process[j, i].set_xlim(90, 150)
         ax_mH_per_process[j, i].legend(fontsize=6.5)
@@ -936,8 +942,8 @@ for process in figs_processes:
 
 for i in range(len(ax_mH)):
     for j in range(len(ax_mH[i])):
-        ax_mH[i, j].set_xlabel("$m_H$ (reco.) [GeV]")
-        ax_mH[i, j].set_xlabel("$m_H$ (reco.) [GeV]")
+        ax_mH[i, j].set_xlabel("$m_H$ [GeV]")
+        ax_mH[i, j].set_xlabel("$m_H$ [GeV]")
         ax_mH[i, j].grid()
     ax_mH[i, 1].set_xlim(100, 140)
     ax_mH[i, 0].legend(title="q ∈ {u, d, s}", fontsize=7.5, title_fontsize=8)

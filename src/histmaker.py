@@ -419,12 +419,22 @@ def build_graph(df, dataset):
     )
     histograms += [h_unmatched_reco_jets]
 
+    # CaloJets are read from a branch, so they carry no constituents and the
+    # provenance-based Higgs-jet selection can't be built for them.
+    has_jet_constituents = args.jet_algorithm != "CaloJetDurham"
     df = get_Higgs_mass_with_truth_matching(
         df,
         genjets_field=GenJetVariable,
         recojets_field=RecoJetVariable,
         expected_num_jets=NUMBER_OF_HIGGS_JETS[dataset],
         matching_radius=args.jet_matching_radius,
+        recojets_fastjet_field="FastJet_jets_reco" if has_jet_constituents else None,
+        n_jets=NUMBER_OF_JETS[dataset],
+        # In a plain reco run the ideal-matching jets are built alongside the reco
+        # ones (jets.py), so both mH definitions come out of the same event loop.
+        alt_recojets_field=("IdealJetFastJet"
+                            if has_jet_constituents and not args.ideal_matching
+                            else None),
     )
     df = df.Define(
         "matching_reco_with_partons",
@@ -490,6 +500,59 @@ def build_graph(df, dataset):
         ("h_mH_reco", "Higgs mass from reco jets;M_H (reco jets);Events", 1000, 0, 250),
         "inv_mass_reco",
     )
+    # Same as h_mH_reco but with the corrected parton->reco-jet mapping (see
+    # truth_matching.py); kept side by side so both can be compared on identical
+    # events. Identical to h_mH_reco for 2-jet processes by construction.
+    h_mH_reco_fixed = df.Histo1D(
+        (
+            "h_mH_reco_fixed",
+            "Higgs mass from reco jets, fixed gen->reco mapping;M_H (reco jets);Events",
+            1000,
+            0,
+            250,
+        ),
+        "inv_mass_reco_fixed",
+    )
+    # mH from the ideal-matching jets computed in this same run, plus the three
+    # PFlow-object definitions restricted to events where *both* jet definitions
+    # found all the Higgs jets - the only way to compare them on identical events
+    # (the standalone per-method histograms each drop a different set of events).
+    if has_jet_constituents and not args.ideal_matching:
+        histograms.append(df.Histo1D(
+            ("h_mH_reco_ideal",
+             "Higgs mass, ideal-matching jets (same run);M_H;Events", 1000, 0, 250),
+            "inv_mass_reco_alt"))
+        df_common = df.Filter("inv_mass_reco_fixed > 0 && inv_mass_reco_alt > 0",
+                              "Higgs jets found by both jet definitions")
+        for name, column, title in (
+            ("h_mH_common_detector", "inv_mass_reco_particles_matched_from_higgs",
+             "perfect clustering, PFlow objects"),
+            ("h_mH_common_ideal", "inv_mass_reco_alt", "truth jets, PFlow objects"),
+            ("h_mH_common_reco", "inv_mass_reco_fixed", "reco jets, PFlow objects"),
+            # Gen jets with gen momenta, i.e. the jet definition with no detector
+            # at all, on the same common event sample as the three above.
+            ("h_mH_common_gen", "inv_mass_gen", "truth jets, gen momenta"),
+        ):
+            histograms.append(df_common.Histo1D(
+                (name, f"Higgs mass, {title}, common selection;M_H;Events",
+                 1000, 0, 250), column))
+
+    # Higgs jets picked by particle provenance instead of dR matching, so no
+    # event is lost to a matching failure (see truth_matching.py).
+    if has_jet_constituents:
+        histograms.append(
+            df.Histo1D(
+                (
+                    "h_mH_reco_provenance",
+                    "Higgs mass from reco jets, H jets by particle provenance;"
+                    "M_H (reco jets);Events",
+                    1000,
+                    0,
+                    250,
+                ),
+                "inv_mass_reco_provenance",
+            )
+        )
     h_mH_gen = df.Histo1D(
         ("h_mH_gen", "Higgs mass from gen jets;M_H (gen jets);Events", 1000, 0, 250),
         "inv_mass_gen",
@@ -516,6 +579,7 @@ def build_graph(df, dataset):
     )
     histograms += [
         h_mH_reco,
+        h_mH_reco_fixed,
         h_mH_gen,
         h_mH_gen_all,
         h_mH_reco_all,

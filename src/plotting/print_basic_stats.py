@@ -2,6 +2,7 @@
 # For the number of passed events, take the histogram h_mH_stable_gt_particles, and look at the total number of events (sum of all bins)
 import ROOT
 import os
+import json
 import numpy as np
 import argparse
 from src.process_config import HUMAN_READABLE_PROCESS_NAMES
@@ -84,12 +85,17 @@ for idx, folder_name in enumerate(folders):
         procname = HUMAN_READABLE_PROCESS_NAMES.get(name, name)
         if procname not in results:
             results[procname] = {}
-        results[procname][folder_readable_names[idx]] = pass_rate
+        results[procname][folder_readable_names[idx]] = {
+            "before": number_of_events_total,
+            "after": integral,
+            "pass_rate": pass_rate,
+        }
 
 print(results)
-def print_table_markdown(data, folder_names, output_filename=None, sort_processes=True):
+def print_table_markdown(data, folder_names, value_key, output_filename=None, sort_processes=True):
     """
-    Print a GitHub-flavored Markdown table.
+    Print a GitHub-flavored Markdown table, pulling `value_key` out of each
+    per-(process, folder) stats dict (e.g. "pass_rate" or "before").
     The best (maximum) value per process row is bolded.
     """
     columns = ["Process"] + folder_names
@@ -118,13 +124,13 @@ def print_table_markdown(data, folder_names, output_filename=None, sort_processe
 
         # Collect numeric values only
         numeric_values = [
-            v for v in metrics.values() if isinstance(v, (int, float))
+            m[value_key] for m in metrics.values() if isinstance(m, dict) and value_key in m
         ]
         best_value = max(numeric_values) if numeric_values else None
 
         row = [escape_md(process)]
         for folder in folder_names:
-            value = metrics.get(folder, "")
+            value = metrics.get(folder, {}).get(value_key, "")
             is_best = (
                 isinstance(value, (int, float))
                 and best_value is not None
@@ -148,6 +154,12 @@ if args.important_only:
 print_table_markdown(
     results,
     folder_readable_names,
+    "pass_rate",
     output_filename=os.path.join(base_dir, filename),
 )
+
+# Machine-readable dump (raw counts + pass rate) for the interactive dashboard,
+# consumed by build_dashboard_data.py.
+with open(os.path.join(base_dir, "basic_stats_summary.json"), "w") as f:
+    json.dump(results, f)
 
