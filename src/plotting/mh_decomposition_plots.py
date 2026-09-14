@@ -489,11 +489,12 @@ def packed_layout(data):
 
 def fig_grid(data, keys, method_dirs, reco_hist, x_range, log_y, all_variants=VARIANTS,
              transposed=False, arrows=True, jets_rows=None, only_processes=None,
-             jet_badge=False):
+             jet_badge=False, figsize=None):
     """arrows=False drops the two grey guide arrows and the margin they need, so
     the panels run to the edge of the canvas - the version to drop on a poster.
     jets_rows overrides which rows of JETS_IN_COLUMNS are drawn (transposed only);
     only_processes restricts the grid to a subset of processes (either layout).
+    figsize overrides the canvas size (default: 4.0 x 3.4 in per panel).
     jet_badge puts the jet multiplicity in the top-right corner of every panel,
     which is what makes a single row or column readable on its own.
     """
@@ -507,7 +508,8 @@ def fig_grid(data, keys, method_dirs, reco_hist, x_range, log_y, all_variants=VA
     rows = max(rc[0] for rc in layout.values()) + 1
     cols = max(rc[1] for rc in layout.values()) + 1
     # Wider than tall per panel, like the mH comparison figures in joint_plots.
-    fig, ax = plt.subplots(rows, cols, figsize=(4.0 * cols, 3.4 * rows),
+    fig, ax = plt.subplots(rows, cols,
+                           figsize=figsize or (4.0 * cols, 3.4 * rows),
                            squeeze=False)
     used = set()
 
@@ -1087,8 +1089,11 @@ def main():
          "2/4/6 jets across the row, flavour down the rows"),
         # rows <-> columns: 2/4/6 jets down the rows, flavour across
         ("mH_decomposition_genphys_by_jets_NoGluons_T.pdf",
-         dict(transposed=False, only_processes=no_gluon_processes),
-         "2/4/6 jets down the rows, flavour across the row"),
+         # Poster slot is 290 x 257. Same aspect ratio, but 0.8 x 0.8 = 64% of the
+         # 3-row height, so the (absolute) font sizes read bigger once placed.
+         dict(transposed=False, only_processes=no_gluon_processes,
+              figsize=(0.64 * 3 * 3.4 * 290 / 257, 0.64 * 3 * 3.4)),
+         "2/4/6 jets down the rows, flavour across the row, 290:257 canvas"),
         # the gluon row on its own, the counterpart of the NoGluons figure
         ("mH_decomposition_genphys_by_jets_GluonsOnly.pdf",
          dict(transposed=True, jets_rows=gluon_row),
