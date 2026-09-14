@@ -24,7 +24,7 @@ Explorer tab:
   a one-line summary of how many histograms are plotted and their total entries.
 - One-click presets (mirroring the comparisons in joint_plots.py and
   presentation.pdf) for common combinations: jet multiplicity (2/4/6 jets),
-  clustering algorithm scan (Durham vs. anti-kt radii), detector/matching
+  clustering algorithm scan (Durham vs. the C/A and kT radius scans), detector/matching
   comparison (PF vs. Calo vs. ideal matching), energy recovery on/off,
   B-hadron content scan, and two Higgs-mass peak comparisons (clustering
   algorithm scan, detector comparison) — each with sensible default colors
@@ -37,7 +37,7 @@ one subplot per process, positioned by (B-hadron content x jet multiplicity),
 with every selected clustering method / detector config overlaid inside each
 cell. Grid presets mirror the reference presentation: detector/matching
 comparison (PF vs. Calo vs. ideal matching), Higgs-mass clustering-algorithm
-scan (Durham vs. anti-kt radii), and anti-kt energy recovery.
+scan (Durham vs. the C/A and kT radius scans), and C/A energy recovery.
 
 Statistics tab: fit coefficients (JER/angular + Higgs mass peak), raw event
 counts, and filter pass rates, one table each, built from the same data.
@@ -158,7 +158,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   Interactive browser for <b>jet reconstruction performance</b> in FCC-ee ZH events at
   &radic;s = 240 GeV: jet <b>energy</b> and <b>angular resolution</b> vs. true jet energy, and
   reconstructed <b>Higgs-mass</b> peaks &mdash; compared across jet clustering methods
-  (Particle-Flow / Calo, Durham / anti-k<sub>T</sub> at several radii, with/without energy recovery)
+  (Particle-Flow / Calo, Durham / e+e- C/A / e+e- k<sub>T</sub> at several radii, with/without energy recovery)
   and physics processes. Everything runs locally in your browser; nothing is uploaded.
   <details>
     <summary>How to use it (click to expand)</summary>
@@ -313,7 +313,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <div id="tab-coeff" class="tab-content">
 <div class="tab-help">
   <b>Coefficients.</b> How each <b>fitted parameter</b> of the jet-energy-resolution curve trends
-  across configurations. Pick a <b>fit model</b> and an <b>x-axis</b> (anti-k<sub>T</sub> radius,
+  across configurations. Pick a <b>fit model</b> and an <b>x-axis</b> (jet radius R,
   number of final-state jets, or clustering method); you get one panel per coefficient
   (A, B, C, D&hellip;), with error bars from the fit covariance. Tick which methods/processes to
   include on the left.
@@ -327,7 +327,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <fieldset>
       <legend>X-axis</legend>
       <select id="coeffXaxisSelect" style="width:100%;">
-        <option value="radius">anti-kT radius R</option>
+        <option value="radius">jet radius R</option>
         <option value="njets">number of final-state jets</option>
         <option value="method">clustering method</option>
       </select>
@@ -606,11 +606,45 @@ function hslToHex(h, s, l) {
   return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
 }
 
-function antiKtRadius(methodName, recovery) {
-  const re = recovery ? /^PF_E_recovery_AntiKtR(\d+)$/ : /^PF_AntiKtR(\d+)$/;
-  const m = methodName.match(re);
-  return m ? parseInt(m[1], 10) : null;
+// Which radius-scan family a method belongs to: "ee_ca" (e+e- Cambridge/Aachen),
+// "ee_ca_er" (the same with energy recovery) or "ee_kt" (e+e- kT). Prefers the
+// family/radius fields written by build_dashboard_data.py, falling back to a
+// regex for JSON produced before those existed. NB the PF_AntiKtR* directories
+// are C/A, not anti-kT: the ee_genkt exponent argument was never passed.
+function methodFamily(methodName) {
+  const meta = (DASHBOARD_DATA.methods || {})[methodName] || {};
+  if (meta.family) return meta.family;
+  if (/^PF_E_recovery_(EECambridge|AntiKt)R\d+$/.test(methodName)) return "ee_ca_er";
+  if (/^PF_EEAntiKtR\d+$/.test(methodName)) return "ee_akt";
+  if (/^PF_(EECambridge|AntiKt)R\d+$/.test(methodName)) return "ee_ca";
+  if (/^PF_EEKtR\d+$/.test(methodName)) return "ee_kt";
+  return null;
 }
+
+// Jet radius R as a number (0.8), or null for Durham/CaloJets.
+function methodRadius(methodName) {
+  const meta = (DASHBOARD_DATA.methods || {})[methodName] || {};
+  if (meta.radius !== undefined && meta.radius !== null) return meta.radius;
+  const m = methodName.match(/R(\d+)$/);
+  return m ? parseInt(m[1], 10) / 10 : null;
+}
+
+// Methods of one family, ordered by increasing radius.
+function familyMethods(family) {
+  return methodNames
+    .filter(m => methodFamily(m) === family)
+    .sort((a, b) => methodRadius(a) - methodRadius(b));
+}
+
+const FAMILY_LABELS = {
+  ee_ca: "e+e- C/A",
+  ee_ca_er: "e+e- C/A + E-recovery",
+  ee_kt: "e+e- k<sub>T</sub>",
+  ee_akt: "e+e- anti-k<sub>T</sub>",
+};
+// Hue per family: purple for C/A (p=0), amber for kT (p=+1), teal for anti-kT
+// (p=-1). Durham is blue and Calo green, so those four stay distinguishable.
+const FAMILY_HUES = { ee_ca: 270, ee_ca_er: 270, ee_kt: 25, ee_akt: 175 };
 
 function representativeProcess() {
   return processNames.find(p => p.includes("qqqq")) || processNames[0];
@@ -650,25 +684,56 @@ function buildPresets() {
     });
   }
 
-  // 2. Clustering algorithm scan: Durham + AntiKt radii (no energy recovery),
-  // single representative process, AntiKt getting darker purple with radius.
-  const akMethods = methodNames
-    .filter(m => antiKtRadius(m, false) !== null)
-    .sort((a, b) => antiKtRadius(a, false) - antiKtRadius(b, false));
-  if (durhamLike && akMethods.length) {
+  // 2. One radius scan per family: Durham + that family's radii, single
+  // representative process, the scan getting darker with radius.
+  ["ee_ca", "ee_kt", "ee_akt"].forEach(family => {
+    const scanMethods = familyMethods(family);
+    if (!durhamLike || !scanMethods.length) return;
     const proc = representativeProcess();
-    const methods = [durhamLike, ...akMethods];
-    const colorOf = (m, p) => {
+    const methods = [durhamLike, ...scanMethods];
+    const hue = FAMILY_HUES[family];
+    const colorOf = (m) => {
       if (m === durhamLike) return "#1f77b4";
-      const idx = akMethods.indexOf(m);
-      const lightness = 70 - (idx / Math.max(1, akMethods.length - 1)) * 45;
-      return hslToHex(270, 60, lightness);
+      const idx = scanMethods.indexOf(m);
+      const lightness = 70 - (idx / Math.max(1, scanMethods.length - 1)) * 45;
+      return hslToHex(hue, 60, lightness);
     };
     presets.push({
-      title: "Clustering algorithm scan",
-      desc: `Durham vs. anti-kt radii, for ${(DASHBOARD_DATA.process_meta[proc] || {}).label || proc}`,
+      title: `${FAMILY_LABELS[family].replace(/<[^>]+>/g, "")} radius scan`,
+      desc: `Durham vs. the ${FAMILY_LABELS[family].replace(/<[^>]+>/g, "")} radii, for ${(DASHBOARD_DATA.process_meta[proc] || {}).label || proc}`,
       methods, processes: [proc], colorOf, quantity: "energy:_all",
     });
+  });
+
+  // 2b. C/A vs kT at equal radius: the direct algorithm comparison. Purple =
+  // Cambridge/Aachen, amber = kT, darkening with radius.
+  {
+    const caScan = familyMethods("ee_ca");
+    const ktScan = familyMethods("ee_kt");
+    const sharedRadii = caScan
+      .map(methodRadius)
+      .filter(r => ktScan.some(m => methodRadius(m) === r))
+      .sort((a, b) => a - b);
+    if (sharedRadii.length) {
+      const proc = representativeProcess();
+      const methods = [];
+      sharedRadii.forEach(r => {
+        const ca = caScan.find(m => methodRadius(m) === r);
+        const kt = ktScan.find(m => methodRadius(m) === r);
+        if (ca) methods.push(ca);
+        if (kt) methods.push(kt);
+      });
+      const colorOf = (m) => {
+        const idx = sharedRadii.indexOf(methodRadius(m));
+        const lightness = 70 - (idx / Math.max(1, sharedRadii.length - 1)) * 45;
+        return hslToHex(FAMILY_HUES[methodFamily(m)] ?? 0, 65, lightness);
+      };
+      presets.push({
+        title: "C/A vs kT at equal R",
+        desc: `e+e- Cambridge/Aachen (purple) vs. e+e- kT (amber) at matched radius, for ${(DASHBOARD_DATA.process_meta[proc] || {}).label || proc}`,
+        methods, processes: [proc], colorOf, quantity: "energy:_all",
+      });
+    }
   }
 
   // 3. Detector / matching comparison: PF vs Calo vs PF+IdealMatching.
@@ -689,36 +754,33 @@ function buildPresets() {
     });
   }
 
-  // 4. Energy recovery on/off: pair up AntiKt radii available both with and
+  // 4. Energy recovery on/off: pair up C/A radii available both with and
   // without energy recovery; same hue per radius, recovery = saturated/dark,
   // no recovery = light, so pairs are visually grouped.
-  const akNoRec = methodNames.filter(m => antiKtRadius(m, false) !== null);
-  const akRec = methodNames.filter(m => antiKtRadius(m, true) !== null);
-  const pairedRadii = akNoRec
-    .map(m => antiKtRadius(m, false))
-    .filter(r => akRec.some(m => antiKtRadius(m, true) === r))
+  const caNoRec = familyMethods("ee_ca");
+  const caRec = familyMethods("ee_ca_er");
+  const pairedRadii = caNoRec
+    .map(methodRadius)
+    .filter(r => caRec.some(m => methodRadius(m) === r))
     .sort((a, b) => a - b)
     .slice(0, 5);
   if (pairedRadii.length) {
     const proc = representativeProcess();
     const methods = [];
     const colorOf = (m) => {
-      const rNoRec = antiKtRadius(m, false);
-      const rRec = antiKtRadius(m, true);
-      const r = rNoRec !== null ? rNoRec : rRec;
-      const idx = pairedRadii.indexOf(r);
+      const idx = pairedRadii.indexOf(methodRadius(m));
       const hue = (idx * 360) / Math.max(1, pairedRadii.length);
-      return rNoRec !== null ? hslToHex(hue, 45, 75) : hslToHex(hue, 85, 40);
+      return methodFamily(m) === "ee_ca_er" ? hslToHex(hue, 85, 40) : hslToHex(hue, 45, 75);
     };
     pairedRadii.forEach(r => {
-      const noRec = methodNames.find(m => antiKtRadius(m, false) === r);
-      const rec = methodNames.find(m => antiKtRadius(m, true) === r);
+      const noRec = caNoRec.find(m => methodRadius(m) === r);
+      const rec = caRec.find(m => methodRadius(m) === r);
       if (noRec) methods.push(noRec);
       if (rec) methods.push(rec);
     });
     presets.push({
       title: "Energy recovery on/off",
-      desc: `Anti-kt with vs. without energy recovery, by radius, for ${(DASHBOARD_DATA.process_meta[proc] || {}).label || proc}`,
+      desc: `e+e- C/A with vs. without energy recovery, by radius, for ${(DASHBOARD_DATA.process_meta[proc] || {}).label || proc}`,
       methods, processes: [proc], colorOf, quantity: "energy:_all",
     });
   }
@@ -747,7 +809,7 @@ function buildPresets() {
     });
   }
 
-  // 6. Clustering algorithm: Higgs mass comparison (Durham vs. anti-kt radii),
+  // 6. Clustering algorithm: Higgs mass comparison (Durham vs. the radius scans),
   // showing under/over-clustering directly in the mH peak (mirrors slides 19-21).
   if (durhamLike && akMethods.length) {
     const proc = representativeProcess();
@@ -760,7 +822,7 @@ function buildPresets() {
     };
     presets.push({
       title: "Higgs mass: clustering algorithm scan",
-      desc: `Durham vs. anti-kt radii mH peak, for ${(DASHBOARD_DATA.process_meta[proc] || {}).label || proc}`,
+      desc: `Durham vs. the e+e- C/A radii mH peak, for ${(DASHBOARD_DATA.process_meta[proc] || {}).label || proc}`,
       methods, processes: [proc], colorOf, quantity: "mass",
     });
   }
@@ -1542,8 +1604,8 @@ function redrawGrid() {
 // --------------------------------------------------------------------------
 // Grid presets: method comparisons mirroring the reference presentation.
 //   - Detector / matching (slides 12 & 16): PF vs. Calo vs. PF+ideal matching.
-//   - Higgs-mass clustering-algorithm scan (slide 19): Durham vs. anti-kt radii.
-//   - Higgs-mass anti-kt energy recovery (slide 21): anti-kt radii with the
+//   - Higgs-mass clustering-algorithm scan (slide 19): Durham vs. each radius scan.
+//   - Higgs-mass C/A energy recovery (slide 21): e+e- C/A radii with the
 //     E-recovery correction (paired against the Durham baseline).
 // --------------------------------------------------------------------------
 
@@ -1570,17 +1632,16 @@ function buildGridPresets() {
     PF_Durham: "#1f77b4", CaloJets_Durham: "#2ca02c", PF_Durham_IdealMatching: "#ff7f0e",
   };
 
-  const akMethods = methodNames
-    .filter(m => antiKtRadius(m, false) !== null)
-    .sort((a, b) => antiKtRadius(a, false) - antiKtRadius(b, false));
-  const akRecMethods = methodNames
-    .filter(m => antiKtRadius(m, true) !== null)
-    .sort((a, b) => antiKtRadius(a, true) - antiKtRadius(b, true));
+  const caMethods = familyMethods("ee_ca");
+  const caRecMethods = familyMethods("ee_ca_er");
+  const ktMethods = familyMethods("ee_kt");
+  const aktMethods = familyMethods("ee_akt");
 
-  const purpleFor = (list, m, radiusFn) => {
+  // Light -> dark ramp along a family's radius list, in that family's hue.
+  const rampFor = (list, m, hue) => {
     const idx = list.indexOf(m);
     const lightness = 70 - (idx / Math.max(1, list.length - 1)) * 45;
-    return hslToHex(270, 60, lightness);
+    return hslToHex(hue, 60, lightness);
   };
 
   // Slides 12 & 16: detector / matching comparison, jet energy resolution.
@@ -1597,34 +1658,34 @@ function buildGridPresets() {
     });
   }
 
-  // Slide 19: Higgs mass, clustering-algorithm scan (Durham vs. anti-kt radii).
-  if (durhamLike && akMethods.length) {
-    const methods = [durhamLike, ...akMethods];
+  // Slide 19: one radius scan per family, mH and energy resolution.
+  [["ee_ca", caMethods], ["ee_kt", ktMethods], ["ee_akt", aktMethods]].forEach(([family, scan]) => {
+    if (!durhamLike || !scan.length) return;
+    const name = FAMILY_LABELS[family].replace(/<[^>]+>/g, "");
+    const methods = [durhamLike, ...scan];
+    const colorOf = m =>
+      m === durhamLike ? "#1f77b4" : rampFor(scan, m, FAMILY_HUES[family]);
     presets.push({
-      title: "Higgs mass: clustering-algorithm scan",
-      desc: "Durham vs. anti-kt radii mH peaks, across all processes",
-      methods,
-      colorOf: m => (m === durhamLike ? "#1f77b4" : purpleFor(akMethods, m)),
-      quantity: "mass",
+      title: `Higgs mass: ${name} radius scan`,
+      desc: `Durham vs. the ${name} radii, mH peaks across all processes`,
+      methods, colorOf, quantity: "mass",
     });
     presets.push({
-      title: "Energy resolution: clustering-algorithm scan",
-      desc: "Durham vs. anti-kt radii jet energy resolution, across all processes",
-      methods,
-      colorOf: m => (m === durhamLike ? "#1f77b4" : purpleFor(akMethods, m)),
-      quantity: "energy:_all",
+      title: `Energy resolution: ${name} radius scan`,
+      desc: `Durham vs. the ${name} radii, jet energy resolution across all processes`,
+      methods, colorOf, quantity: "energy:_all",
     });
-  }
+  });
 
-  // Slide 21: Higgs mass, anti-kt energy recovery (recovered radii vs. Durham).
-  if (akRecMethods.length) {
-    const methods = durhamLike ? [durhamLike, ...akRecMethods] : akRecMethods.slice();
+  // Slide 21: Higgs mass, C/A energy recovery (recovered radii vs. Durham).
+  if (caRecMethods.length) {
+    const methods = durhamLike ? [durhamLike, ...caRecMethods] : caRecMethods.slice();
     presets.push({
-      title: "Higgs mass: anti-kt energy recovery",
-      desc: "Durham vs. anti-kt radii with energy recovery, mH peaks across all processes",
+      title: "Higgs mass: e+e- C/A energy recovery",
+      desc: "Durham vs. e+e- C/A radii with energy recovery, mH peaks across all processes",
       methods,
-      // Matches slide 21: Durham in blue, AK-ER radii light->dark purple by radius.
-      colorOf: m => (m === durhamLike ? "#1f77b4" : purpleFor(akRecMethods, m)),
+      // Matches slide 21: Durham in blue, C/A-ER radii light->dark purple by radius.
+      colorOf: m => (m === durhamLike ? "#1f77b4" : rampFor(caRecMethods, m, FAMILY_HUES.ee_ca_er)),
       quantity: "mass",
     });
   }
@@ -1704,7 +1765,7 @@ document.getElementById("downloadJsonBtn").addEventListener("click", () => {
 
 // --------------------------------------------------------------------------
 // Coefficients tab: how each fitted JER parameter (A, B, C, D...) trends across
-// configurations - vs anti-kT radius, number of final-state jets, or clustering
+// configurations - vs jet radius R, number of final-state jets, or clustering
 // method. One panel per coefficient, error bars from the fit covariance. Fits
 // live on the energy._all quantity (added by build_dashboard_data.py).
 // --------------------------------------------------------------------------
@@ -1860,7 +1921,7 @@ function renderCoeffModelDesc(model) {
 
 const COEFF_ENERGY_Q = {kind: "energy", part: "_all"};
 const COEFF_X_HINT = {
-  radius: "anti-kT radii only (Durham/Calo have no radius and are skipped). One line per process; dotted = with energy recovery.",
+  radius: "radius-scan methods only (Durham/Calo have no radius and are skipped). One line per process; dotted = with energy recovery.",
   njets: "Points are processes grouped by their final-state jet count; one colour per method.",
   method: "One point per clustering method; one colour per process.",
 };
@@ -1869,8 +1930,8 @@ const coeffMethodColor = {};
 methodNames.forEach((m, i) => { coeffMethodColor[m] = AUTO_COLORS[i % AUTO_COLORS.length]; });
 
 function coeffLabelsFor(model) { return COEFF_LABELS[fitBaseModelOf(model)] || null; }
-function coeffRadius(method) { const m = method.match(/AntiKtR(\d+)/); return m ? parseInt(m[1], 10) / 10 : null; }
-function coeffIsRecovery(method) { return /E_recovery/i.test(method); }
+function coeffRadius(method) { return methodRadius(method); }
+function coeffIsRecovery(method) { return methodFamily(method) === "ee_ca_er" || /E_recovery/i.test(method); }
 function methodLabelOf(m) { return (DASHBOARD_DATA.methods[m] || {}).label || m; }
 function procLabelOf(p) { return (DASHBOARD_DATA.process_meta[p] || {}).label || p; }
 function procColorOf(p) { return (DASHBOARD_DATA.process_meta[p] || {}).color || AUTO_COLORS[0]; }
@@ -1888,21 +1949,27 @@ coeffProcessOptions.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.
 
 // Compact tick label for the (categorical) clustering-method x-axis, so 15
 // long method names don't force the panel wider than its container.
+const FAMILY_SHORT = { ee_ca: "C/A", ee_ca_er: "C/A", ee_kt: "kT", ee_akt: "akT" };
 function shortMethodLabel(m) {
   if (m === "CaloJets_Durham") return "Calo";
   if (m === "PF_Durham") return "PF Durham";
   if (m === "PF_Durham_IdealMatching") return "PF Ideal";
-  const rr = m.match(/AntiKtR(\d+)/);
-  if (rr) return "AK" + rr[1] + (coeffIsRecovery(m) ? " ER" : "");
+  const family = methodFamily(m);
+  const r = methodRadius(m);
+  if (family && r !== null) {
+    return FAMILY_SHORT[family] + " " + r.toFixed(1) + (coeffIsRecovery(m) ? " ER" : "");
+  }
   return m;
 }
 // Sort key so the method axis reads left-to-right sensibly: radius-less methods
-// (Durham/Calo) first, then anti-kT by increasing radius, E-recovery just after
-// its plain counterpart.
+// (Durham/Calo) first, then each family by increasing radius, with the families
+// kept in separate blocks and E-recovery just after its plain counterpart.
+const FAMILY_ORDER = { ee_ca: 0, ee_ca_er: 0, ee_kt: 1, ee_akt: 2 };
 function coeffMethodRank(m) {
   const r = coeffRadius(m);
   if (r === null) return -1;
-  return r + (coeffIsRecovery(m) ? 0.001 : 0);
+  const familyOffset = (FAMILY_ORDER[methodFamily(m)] || 0) * 100;
+  return familyOffset + r + (coeffIsRecovery(m) ? 0.001 : 0);
 }
 
 // Map one point to its series (grouping/colour/x) for the chosen x-axis.
@@ -1963,7 +2030,7 @@ function redrawCoeff() {
     xAxisLayout = {title: {text: "# final-state jets", font: {size: 11}}, type: "linear",
                    tickvals: [2, 4, 6], range: [1, 7], automargin: true};
   } else {  // radius
-    xAxisLayout = {title: {text: "anti-kT radius R", font: {size: 11}}, type: "linear",
+    xAxisLayout = {title: {text: "jet radius R", font: {size: 11}}, type: "linear",
                    dtick: 0.2, autorange: true, automargin: true};
   }
 
@@ -2010,7 +2077,7 @@ function redrawCoeff() {
 
   if (!anyTrace) {
     msg.textContent = xaxis === "radius"
-      ? "None of the selected methods have an anti-kT radius (Durham/Calo are radius-less)."
+      ? "None of the selected methods have a jet radius (Durham/Calo are radius-less)."
       : "Nothing to plot for this selection.";
   }
   // shared legend

@@ -76,8 +76,12 @@ if [[ "$HTML_ONLY" == false ]]; then
     # Produce the summary matrix plots (comparison of different methods with respect to different metrics)
     # ------------------------------------------------------------------
     python src/plotting/joint_plots.py --inputDir $INPUT_DIR
-    python src/plotting/joint_plots.py --inputDir $INPUT_DIR --AK-comparison
-    python src/plotting/joint_plots.py --inputDir $INPUT_DIR --AK-comparison --energy-recovery
+    # One radius-scan comparison per algorithm family. joint_plots.py exits 0
+    # with a message when a family has no method directories (or no pickles) in
+    # this tree, so a partially-populated tree does not abort the pipeline.
+    for FAMILY in ee-ca ee-ca-er ee-kt ee-akt; do
+        python src/plotting/joint_plots.py --inputDir $INPUT_DIR --family "$FAMILY"
+    done
 
     # ------------------------------------------------------------------
     # Run final statistics command
@@ -121,3 +125,31 @@ fi
 echo "mH decomposition using $RECO_HIST"
 python src/plotting/mh_decomposition_plots.py --inputDir "$INPUT_DIR" \
     --reco-hist "$RECO_HIST" --compare-fixed
+
+# ------------------------------------------------------------------
+# Event displays for the tails of the mH "Physics" curve (h_mH_gen): 20 events
+# each far below, at, and far above the peak, as one multi-page PDF.
+#
+# Unlike every other step this one reads the *dataset*, not the histograms, and
+# re-runs the clustering, because per-event four-vectors exist nowhere in
+# $PATH_TO_HISTOGRAMS. It is therefore skipped unless PATH_TO_DATASET points at
+# a tree that actually holds the process. Guarded so a missing dataset cannot
+# abort the pipeline under `set -euo pipefail`.
+# ------------------------------------------------------------------
+ED_PROCESS="${ED_PROCESS:-p8_ee_ZH_6jet_LF_ecm240}"
+ED_DIR="$INPUT_DIR/plots/event_displays"
+if [[ -n "${PATH_TO_DATASET:-}" && -d "$PATH_TO_DATASET/$ED_PROCESS" ]]; then
+    echo "Event displays for $ED_PROCESS"
+    if python src/event_displays.py --process "$ED_PROCESS" \
+            --n-per-window "${ED_N_PER_WINDOW:-20}" \
+            --max-files "${ED_MAX_FILES:-2}" \
+            --output "$ED_DIR/${ED_PROCESS}_payload.pkl"; then
+        python src/plotting/event_display_plots.py \
+            --payload "$ED_DIR/${ED_PROCESS}_payload.pkl" \
+            --output "$ED_DIR/${ED_PROCESS}_event_displays.pdf"
+    else
+        echo "  event-display dump failed - skipping (see the error above)"
+    fi
+else
+    echo "Skipping event displays: no \$PATH_TO_DATASET/$ED_PROCESS"
+fi

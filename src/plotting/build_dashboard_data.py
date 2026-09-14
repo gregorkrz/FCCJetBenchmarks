@@ -1,7 +1,7 @@
 """Stage 3 of the resolution pipeline (no ROOT, no fitting — pure packaging).
 
 Walks a top-level histogram directory containing one subfolder per jet
-clustering method (e.g. `PF_Durham`, `CaloJets_Durham`, `PF_AntiKtR08`, ...),
+clustering method (e.g. `PF_Durham`, `CaloJets_Durham`, `PF_EECambridgeR08`, `PF_EEKtR08`, `PF_EEAntiKtR08`, ...),
 loads each method's `plots_resolution/resolution_dashboard_data.pkl`
 (produced by `resolution_plots.py`) and `plots_mass/mass_dashboard_data.pkl`
 (produced by `mass_plots.py`), and consolidates everything for
@@ -49,28 +49,65 @@ MASS_DASHBOARD_PKL_RELPATH = os.path.join("plots_mass", "mass_dashboard_data.pkl
 STATS_JSON_RELPATH = "basic_stats_summary.json"
 
 
+# Radius-scan directory prefixes -> (label template, family key). Longest prefix
+# first, so PF_E_recovery_EECambridgeR is not shadowed by PF_EECambridgeR.
+#
+# The PF_AntiKtR* entries are legacy names for the *Cambridge/Aachen* runs:
+# src/histmaker_tools/jets.py used to call clustering_ee_genkt without the
+# exponent argument, so it defaulted to 0 (C/A) despite the "AntiKt" name. They
+# are labelled as C/A here so an un-renamed tree is still described correctly.
+_SCAN_PREFIXES = [
+    ("PF_E_recovery_EECambridgeR", "PF ee-C/A R={:.1f} (E recovery)", "ee_ca_er"),
+    ("PF_E_recovery_AntiKtR", "PF ee-C/A R={:.1f} (E recovery)", "ee_ca_er"),
+    ("PF_EECambridgeR", "PF ee-C/A R={:.1f}", "ee_ca"),
+    ("PF_AntiKtR", "PF ee-C/A R={:.1f}", "ee_ca"),
+    ("PF_EEKtR", "PF ee-kT R={:.1f}", "ee_kt"),
+    ("PF_EEAntiKtR", "PF ee-anti-kT R={:.1f}", "ee_akt"),
+]
+
+_FIXED_LABELS = {
+    "PF_Durham": "PF Durham",
+    "PF_Durham_IdealMatching": "PF Durham (Ideal Matching)",
+    "CaloJets_Durham": "Calo Durham",
+}
+
+
+def _scan_match(method_name):
+    """(label_template, family, radius) for a radius-scan dir, else None."""
+    for prefix, template, family in _SCAN_PREFIXES:
+        if method_name.startswith(prefix):
+            digits = method_name[len(prefix):]
+            if digits.isdigit():
+                return template, family, int(digits) / 10
+    return None
+
+
 def method_label(method_name):
     """Turn a method directory name into a human-readable label.
 
     Mirrors the naming conventions used in joint_plots.py's method_dict,
-    generalized to handle arbitrary anti-kt radii.
+    generalized to handle arbitrary radii.
     """
-    if method_name == "PF_Durham":
-        return "PF Durham"
-    if method_name == "PF_Durham_IdealMatching":
-        return "PF Durham (Ideal Matching)"
-    if method_name == "CaloJets_Durham":
-        return "Calo Durham"
-
-    m = re.match(r"^PF_E_recovery_AntiKtR(\d+)$", method_name)
-    if m:
-        return f"PF AntiKt R={m.group(1)} (E recovery)"
-
-    m = re.match(r"^PF_AntiKtR(\d+)$", method_name)
-    if m:
-        return f"PF AntiKt R={m.group(1)}"
-
+    if method_name in _FIXED_LABELS:
+        return _FIXED_LABELS[method_name]
+    match = _scan_match(method_name)
+    if match:
+        template, _family, radius = match
+        return template.format(radius)
     return method_name
+
+
+def method_family_and_radius(method_name):
+    """('ee_ca'|'ee_ca_er'|'ee_kt', R) for a radius-scan dir, else (None, None).
+
+    Written into dashboard_data.json so dashboard.html can group and colour
+    methods by family without regexing directory names in JavaScript.
+    """
+    match = _scan_match(method_name)
+    if match:
+        _template, family, radius = match
+        return family, radius
+    return None, None
 
 
 def _sanitize(obj):
@@ -345,8 +382,14 @@ def main():
         light_data = _extract_full_histograms(
             sanitized, [method_name], full_hist_dir, url_prefix
         )
+        family, radius = method_family_and_radius(method_name)
         methods_out[method_name] = {
             "label": method_label(method_name),
+            # family/radius let dashboard.html group and colour the radius scans
+            # without parsing directory names in JavaScript. None for
+            # Durham/CaloJets, which have no radius.
+            "family": family,
+            "radius": radius,
             "processes": light_data,
         }
 

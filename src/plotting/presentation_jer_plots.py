@@ -25,6 +25,10 @@ Usage:
 import argparse
 import json
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.process_config import RADIUS_SCAN, radius_to_str  # noqa: E402
 
 import matplotlib
 
@@ -49,16 +53,35 @@ METHOD_COLORS = {
     "CaloJets_Durham": "green",
 }
 
-# The generalized e+e- anti-kt radius scan, with and without energy recovery.
-AK_RADII = ["04", "06", "08", "10", "12", "14"]
-AK_METHODS = [f"PF_AntiKtR{r}" for r in AK_RADII]
-AK_ER_METHODS = [f"PF_E_recovery_AntiKtR{r}" for r in AK_RADII]
-for _i, _r in enumerate(AK_RADII):
-    _c = plt.cm.plasma(0.05 + 0.8 * _i / (len(AK_RADII) - 1))
-    METHOD_LABELS[f"PF_AntiKtR{_r}"] = f"ee-AK R={int(_r) / 10:.1f}"
-    METHOD_COLORS[f"PF_AntiKtR{_r}"] = _c
-    METHOD_LABELS[f"PF_E_recovery_AntiKtR{_r}"] = f"ee-AK R={int(_r) / 10:.1f} (E-rec)"
-    METHOD_COLORS[f"PF_E_recovery_AntiKtR{_r}"] = _c
+# The generalized e+e- radius scans: Cambridge/Aachen (exponent 0, plasma),
+# kT (exponent +1, amber) and genuine anti-kT (exponent -1, GnBu).
+#
+# NB the directories named PF_AntiKtR* are *not* anti-kT: the ee_genkt exponent
+# argument was never passed, so they defaulted to 0 = Cambridge/Aachen. They are
+# kept here as legacy aliases of the C/A family, labelled accordingly, so an
+# un-renamed histogram tree still plots correctly. Genuine anti-kT lives in
+# PF_EEAntiKtR* (note the "EE").
+SCAN_RADII = [radius_to_str(r) for r in RADIUS_SCAN]
+CA_METHODS = [f"PF_EECambridgeR{r}" for r in SCAN_RADII]
+CA_ER_METHODS = [f"PF_E_recovery_EECambridgeR{r}" for r in SCAN_RADII]
+KT_METHODS = [f"PF_EEKtR{r}" for r in SCAN_RADII]
+AKT_METHODS = [f"PF_EEAntiKtR{r}" for r in SCAN_RADII]
+for _i, _r in enumerate(SCAN_RADII):
+    _R = int(_r) / 10
+    _ca = plt.cm.plasma(0.05 + 0.8 * _i / (len(SCAN_RADII) - 1))
+    _kt = plt.cm.YlOrBr(0.35 + 0.55 * _i / (len(SCAN_RADII) - 1))
+    _akt = plt.cm.GnBu(0.40 + 0.52 * _i / (len(SCAN_RADII) - 1))
+    for _name, _label, _color in (
+        (f"PF_EECambridgeR{_r}", f"ee-C/A R={_R:.1f}", _ca),
+        (f"PF_E_recovery_EECambridgeR{_r}", f"ee-C/A R={_R:.1f} (E-rec)", _ca),
+        (f"PF_EEKtR{_r}", f"ee-$k_T$ R={_R:.1f}", _kt),
+        (f"PF_EEAntiKtR{_r}", f"ee-anti-$k_T$ R={_R:.1f}", _akt),
+        # Legacy directory names for the same C/A runs.
+        (f"PF_AntiKtR{_r}", f"ee-C/A R={_R:.1f}", _ca),
+        (f"PF_E_recovery_AntiKtR{_r}", f"ee-C/A R={_R:.1f} (E-rec)", _ca),
+    ):
+        METHOD_LABELS[_name] = _label
+        METHOD_COLORS[_name] = _color
 
 # The two 2-jet processes shown on the "Jet Energy Resolution (Durham PF)" slide.
 SELECTED_PROCESSES = ["p8_ee_ZH_vvqq_ecm240", "p8_ee_ZH_vvgg_ecm240"]
@@ -85,6 +108,15 @@ FIGURE_DESCRIPTIONS = {
         'slide "Results: Durham algorithm with PFO" - mH, b-jet final states (single panel)',
     "mH_lightflavour_processes.pdf":
         "same for the light-flavour final states (single panel)",
+    "JER_grid_points_Durham_vs_EECambridge.pdf":
+        "points only, Durham vs. the e+e- Cambridge/Aachen radius scan "
+        "(the directories formerly mislabelled PF_AntiKtR*)",
+    "JER_grid_points_Durham_vs_EECambridge_Erecovery.pdf":
+        "same C/A radius scan with energy recovery",
+    "JER_grid_points_Durham_vs_EEKt.pdf":
+        "points only, Durham vs. the e+e- kT radius scan (exponent +1)",
+    "JER_grid_points_Durham_vs_EEAntiKt.pdf":
+        "points only, Durham vs. the genuine e+e- anti-kT radius scan (exponent -1)",
 }
 
 # Display labels for the fitted parameters, keyed by base model. Order follows
@@ -211,13 +243,20 @@ def draw_panel(ax, entry, fit, model, color, label, linestyle="--", errorbars=Fa
     x = np.asarray(entry["mid_points"], dtype=float)
     y = np.asarray(entry["sigma_over_E"], dtype=float)
     point_label = None if show_fit else label
+    # Dots for the fit-free figures (nothing to distinguish them from), crosses
+    # where a fitted curve runs through them.
+    marker = "x" if show_fit else "."
+    # Fit-free panels get a thin dotted connector and translucent markers, so
+    # series that nearly coincide at high E stay separable.
+    style = {} if show_fit else dict(linestyle=":", linewidth=0.8, alpha=0.75)
     if errorbars and entry.get("sigma_over_E_err"):
         err = np.asarray(entry["sigma_over_E_err"], dtype=float)
         err = np.where(np.isfinite(err) & (err > 0), err, 0.0)
-        ax.errorbar(x, y, yerr=err, fmt="x", markersize=markersize, color=color,
-                    elinewidth=0.8, capsize=1.5, label=point_label)
+        ax.errorbar(x, y, yerr=err, fmt=marker, markersize=markersize, color=color,
+                    elinewidth=0.8, capsize=1.5, label=point_label, **style)
     else:
-        ax.plot(x, y, "x", markersize=markersize, color=color, label=point_label)
+        ax.plot(x, y, marker, markersize=markersize, color=color,
+                label=point_label, **style)
     if not show_fit:
         return float(np.nanmax(y)) if y.size else 0.0
     if fit is not None:
@@ -264,8 +303,87 @@ def grid_shape(meta):
 # ---------------------------------------------------------------------------
 
 
+# The light-flavour 2/4/6-jet triple - the first row of the process grid.
+# The b-jet ensemble, one process per jet multiplicity. Saturated colours: the
+# process_config hues are pale and read badly as markers.
+JER_MULTIPLICITY_SETS = {
+    # light-flavour final states, one process per jet multiplicity
+    "": [
+        ("2 jets", "p8_ee_ZH_vvqq_ecm240", "tab:green"),
+        ("4 jets", "p8_ee_ZH_qqqq_ecm240", "tab:purple"),
+        ("6 jets", "p8_ee_ZH_6jet_LF_ecm240", "tab:blue"),
+    ],
+    # the b-jet ensemble
+    "_bjets": [
+        ("2 jets", "p8_ee_ZH_vvbb_ecm240", "tab:green"),
+        ("4 jets", "p8_ee_ZH_bbbb_ecm240", "tab:purple"),
+        ("6 jets", "p8_ee_ZH_6jet_HF_ecm240", "tab:blue"),
+    ],
+}
+
+
+# Panel titles for this figure; METHOD_LABELS spells them without the space.
+METHOD_TITLES = {"PF_Durham": "PF jets", "CaloJets_Durham": "Calo jets"}
+
+
+def fig_jer_multiplicity(data, methods, sets, log_y=False):
+    """Rows = detector, columns = process set, 2/4/6 jets overlaid, points only.
+
+    The two panels of a row share one y range so light-flavour and b-jet can be
+    read against each other; rows keep their own range because PF and Calo differ
+    by a factor of a few. Neither is forced to start at zero.
+    """
+    meta = data["process_meta"]
+    # Panel width as in the JER process grids, but much flatter - four panels do
+    # not need the height of a 3-row grid.
+    fig, ax = plt.subplots(len(methods), len(sets),
+                           figsize=(6.5 * len(sets), 3.12 * len(methods)),
+                           squeeze=False)
+    for r, method in enumerate(methods):
+        row_min, row_max = np.inf, 0.0
+        for c, processes in enumerate(sets):
+            a = ax[r][c]
+            for label, process, color in processes:
+                entry = get_series(data, method, process)
+                if entry is None:
+                    continue
+                x = np.asarray(entry["mid_points"], dtype=float)
+                y = np.asarray(entry["sigma_over_E"], dtype=float)
+                process_name = meta.get(process, {}).get("label", process)
+                # Semi-transparent markers joined by a thin dotted line: several
+                # series sit within a marker width of each other at high E.
+                a.plot(x, y, ".", markersize=13, color=color, alpha=0.75,
+                       linestyle=":", linewidth=0.8,
+                       label=f"{label}: {process_name}")
+                good = y[np.isfinite(y) & (y > 0)]
+                if good.size:
+                    row_min = min(row_min, float(good.min()))
+                    row_max = max(row_max, float(good.max()))
+            a.set_xlabel("$E_{true}$ [GeV]", fontsize=14)
+            a.set_ylabel(r"$\sigma_E / E_{true}$", fontsize=14)
+            a.tick_params(axis="both", labelsize=12)
+            a.grid(alpha=0.45)
+            a.legend(fontsize=11, loc="upper right", framealpha=0.95,
+                     title=METHOD_TITLES.get(method,
+                                             METHOD_LABELS.get(method, method)),
+                     title_fontsize=13)
+        if not np.isfinite(row_min) or row_max <= 0:
+            continue
+        for c in range(len(sets)):
+            if log_y:
+                ax[r][c].set_yscale("log")
+                ax[r][c].set_ylim(0.8 * row_min, 3.0 * row_max)
+            else:
+                # headroom on top for the legend, a little below the lowest point
+                span = row_max - row_min
+                ax[r][c].set_ylim(max(row_min - 0.12 * span, 0.0),
+                                  row_max + 0.55 * span)
+    fig.tight_layout()
+    return fig
+
+
 def fig_grid_twin_scales(data, left_method, right_method, x_label_methods=None,
-                         log_y=True):
+                         log_y=False):
     """Points-only grid with the two methods on independent y axes.
 
     Left axis = `left_method`, right axis = `right_method`, each with its own
@@ -291,7 +409,8 @@ def fig_grid_twin_scales(data, left_method, right_method, x_label_methods=None,
             color = METHOD_COLORS.get(method, "black")
             x = np.asarray(entry["mid_points"], dtype=float)
             y = np.asarray(entry["sigma_over_E"], dtype=float)
-            a.plot(x, y, "x", markersize=6, color=color,
+            a.plot(x, y, ".", markersize=11, color=color, alpha=0.75,
+                   linestyle=":", linewidth=0.8,
                    label=METHOD_LABELS.get(method, method))
             good = y[np.isfinite(y) & (y > 0)]
             if good.size:
@@ -303,6 +422,13 @@ def fig_grid_twin_scales(data, left_method, right_method, x_label_methods=None,
             continue
         used[(r, c)] = (a_left, a_right)
         a_left.set_title(pm["label"], fontsize=11)
+        # Bottom left: with two independent scales both series sit in the middle
+        # band, so the upper corners belong to the legend and the curve starts.
+        a_left.text(0.035, 0.06, f"{pm.get('n_jets', '?')} jets",
+                    transform=a_left.transAxes, ha="left", va="bottom",
+                    fontsize=14.5, color="darkred",
+                    bbox=dict(facecolor="white", edgecolor="red", linewidth=1.2,
+                              boxstyle="round,pad=0.3"))
 
     for (r, c), (a_left, a_right) in used.items():
         for method, a, side in ((left_method, a_left, "left"),
@@ -335,7 +461,7 @@ def fig_grid_twin_scales(data, left_method, right_method, x_label_methods=None,
 
 
 def fig_grid(data, methods, model, errorbars=False, shared_ylim=True, show_fit=True,
-             log_y=False):
+             log_y=False, multiplicity_sets=None):
     """The 5x3 process grid ('full plots' slides), one curve per method.
 
     With show_fit=False only the measured points are drawn. The shared y range is
@@ -346,10 +472,17 @@ def fig_grid(data, methods, model, errorbars=False, shared_ylim=True, show_fit=T
     log_y=True instead puts everything on one logarithmic scale, which is the way
     to show PF and Calo together: the ~8x gap between them at low E is legible on
     a log axis without either being flattened.
+
+    multiplicity_sets appends one extra row per method, each holding the 2/4/6-jet
+    summary panels for the given process sets - same panel geometry as the grid
+    itself, so a cropped-out row keeps the grid's aspect ratio. Those panels stay
+    on a linear y axis (synced within their row) regardless of log_y.
     """
     meta = data["process_meta"]
     rows, cols = grid_shape(meta)
-    fig, ax = plt.subplots(rows, cols, figsize=(13, 11))
+    extra_rows = len(methods) if multiplicity_sets else 0
+    fig, ax = plt.subplots(rows + extra_rows, cols,
+                           figsize=(13, 11 * (rows + extra_rows) / rows))
     used = set()
     ymax_global = 0.0
     ymin_global = np.inf
@@ -369,7 +502,7 @@ def fig_grid(data, methods, model, errorbars=False, shared_ylim=True, show_fit=T
             local_max = max(local_max, draw_panel(
                 a, entry, fit, model, METHOD_COLORS.get(method, "black"),
                 METHOD_LABELS.get(method, method), errorbars=errorbars,
-                show_fit=show_fit, markersize=4 if show_fit else 6))
+                show_fit=show_fit, markersize=4 if show_fit else 11))
             y = np.asarray(entry["sigma_over_E"], dtype=float)
             positive = y[np.isfinite(y) & (y > 0)]
             if positive.size:
@@ -419,6 +552,46 @@ def fig_grid(data, methods, model, errorbars=False, shared_ylim=True, show_fit=T
                            ymax_global if shared_ylim else panel_ymax[(r, c)],
                            headroom=headroom)
     fig.tight_layout()
+    for i, method in enumerate(methods or []):
+        if not multiplicity_sets:
+            break
+        r = rows + i
+        row_min, row_max = np.inf, 0.0
+        for c in range(cols):
+            if c >= len(multiplicity_sets):
+                ax[r, c].set_axis_off()
+                continue
+            a = ax[r, c]
+            for label, process, color in multiplicity_sets[c]:
+                entry = get_series(data, method, process)
+                if entry is None:
+                    continue
+                x = np.asarray(entry["mid_points"], dtype=float)
+                y = np.asarray(entry["sigma_over_E"], dtype=float)
+                name = meta.get(process, {}).get("label", process)
+                a.plot(x, y, ".", markersize=13, color=color, alpha=0.75,
+                       linestyle=":", linewidth=0.8, label=f"{label}: {name}")
+                good = y[np.isfinite(y) & (y > 0)]
+                if good.size:
+                    row_min = min(row_min, float(good.min()))
+                    row_max = max(row_max, float(good.max()))
+            # Same label/tick sizes as the process panels above (style_jer_axis
+            # leaves them at the rcParams default); only the legend is smaller.
+            a.set_xlabel("$E_{true}$ [GeV]")
+            a.set_ylabel(r"$\sigma_E / E_{true}$")
+            a.grid(alpha=0.45)
+            a.legend(fontsize=8, loc="upper right", framealpha=0.95,
+                     title=METHOD_TITLES.get(method,
+                                             METHOD_LABELS.get(method, method)),
+                     title_fontsize=9)
+        if np.isfinite(row_min) and row_max > 0:
+            span = row_max - row_min
+            for c in range(min(cols, len(multiplicity_sets))):
+                ax[r, c].set_ylim(max(row_min - 0.12 * span, 0.0),
+                                  row_max + 0.55 * span)
+    if multiplicity_sets:
+        fig.tight_layout()
+
     # No guide arrows: the per-panel jet-count badge carries that
     # information, and the arrows only crowded the canvas.
     return fig
@@ -775,6 +948,12 @@ def main():
     # markers nearly everywhere anyway). --errorbars still applies to the fit
     # figures above.
     points_figures = [
+        ("JER_points_2_4_6jets_PFJets_CaloJets.pdf",
+         lambda: fig_jer_multiplicity(
+             data, ["PF_Durham", "CaloJets_Durham"],
+             [JER_MULTIPLICITY_SETS[""], JER_MULTIPLICITY_SETS["_bjets"]]),
+         "points only, 2x2: rows = PF jets / Calo jets, columns = light-flavour / "
+         "b-jet ensemble, 2/4/6-jet processes overlaid, each panel autoscaled"),
         ("JER_grid_points_PFJets.pdf",
          lambda: fig_grid(data, ["PF_Durham"], args.model, errorbars=False,
                           shared_ylim=True, show_fit=False),
@@ -801,21 +980,39 @@ def main():
         ("JER_grid_points_PFJets_CaloJets_log.pdf",
          lambda: fig_grid(data, ["PF_Durham", "CaloJets_Durham"], args.model,
                           errorbars=False, shared_ylim=True, show_fit=False,
-                          log_y=True),
+                          log_y=True,
+                          multiplicity_sets=[JER_MULTIPLICITY_SETS[""],
+                                             JER_MULTIPLICITY_SETS["_bjets"]]),
          "points only, PFJets vs. CaloJets on one shared log y scale"),
-        ("JER_grid_points_PFJets_CaloJets_log_separateLegend.pdf",
+        ("JER_grid_points_PFJets_CaloJets_twoscales.pdf",
          lambda: fig_grid_twin_scales(data, "PF_Durham", "CaloJets_Durham"),
-         "points only, PFJets on the left log axis and CaloJets on their own "
-         "right log axis (each range shared across the grid)"),
+         "points only, linear: PFJets on the left axis and CaloJets on their own "
+         "right axis, each range shared across the grid"),
     ]
     for scan_methods, scan_name, scan_desc in (
-        (AK_METHODS, "JER_grid_points_Durham_vs_AntiKt.pdf",
-         "points only, Durham vs. the generalized e+e- anti-kt radius scan"),
-        (AK_ER_METHODS, "JER_grid_points_Durham_vs_AntiKt_Erecovery.pdf",
-         "points only, Durham vs. the anti-kt radius scan with energy recovery"),
+        (CA_METHODS, "JER_grid_points_Durham_vs_EECambridge.pdf",
+         "points only, Durham vs. the e+e- Cambridge/Aachen radius scan"),
+        (CA_ER_METHODS, "JER_grid_points_Durham_vs_EECambridge_Erecovery.pdf",
+         "points only, Durham vs. the e+e- C/A radius scan with energy recovery"),
+        (KT_METHODS, "JER_grid_points_Durham_vs_EEKt.pdf",
+         "points only, Durham vs. the e+e- kT radius scan"),
+        (AKT_METHODS, "JER_grid_points_Durham_vs_EEAntiKt.pdf",
+         "points only, Durham vs. the genuine e+e- anti-kT radius scan"),
+        # Legacy directory names for the C/A runs, in case the tree has not
+        # been renamed. Same figure, so only drawn if the canonical dirs are absent.
+        ([f"PF_AntiKtR{r}" for r in SCAN_RADII],
+         "JER_grid_points_Durham_vs_EECambridge.pdf",
+         "points only, Durham vs. the e+e- Cambridge/Aachen radius scan"),
+        ([f"PF_E_recovery_AntiKtR{r}" for r in SCAN_RADII],
+         "JER_grid_points_Durham_vs_EECambridge_Erecovery.pdf",
+         "points only, Durham vs. the e+e- C/A radius scan with energy recovery"),
     ):
         if not any(m in data["methods"] for m in scan_methods):
-            print(f"  (no anti-kt methods in this tree - skipping {scan_name})")
+            print(f"  (no methods for {scan_name} in this tree - skipping)")
+            continue
+        if any(name == scan_name for name, _, _ in points_figures):
+            # The canonical directory names already produced this figure; the
+            # legacy-name entry is only a fallback for un-renamed trees.
             continue
         points_figures.append((
             scan_name,

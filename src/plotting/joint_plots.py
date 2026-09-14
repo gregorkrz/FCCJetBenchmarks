@@ -12,26 +12,87 @@ from src.process_config import (
     LINE_STYLES,
     NUMBER_OF_JETS,
     PROCESS_TO_ROW_COL,
+    RADIUS_SCAN,
+    JET_FAMILIES,
+    family_prefixes,
+    method_radius,
+    radius_to_str,
 )
+
+# Per-family plotting style for the radius-scan comparison figures.
+#
+#   cap_6jet_radius  With inclusive clustering, at large R a 6-jet event merges
+#                    into fewer jets, so the fully-matched filter leaves ~1% of
+#                    events at R=1.2 and ~0 at R=1.4 and the surviving mH curve
+#                    is pure noise. Radii above the cap are dropped from the
+#                    6-jet panels of the per-process mH grid. None = no cap.
+FAMILY_PLOTS = {
+    "ee-ca": dict(
+        outdir="comparison_EECambridge",
+        cmap=plt.cm.Purples,
+        cmap_range=(0.40, 0.90),
+        linestyle="-",
+        cap_6jet_radius=1.0,
+    ),
+    "ee-ca-er": dict(
+        outdir="comparison_EECambridge_energy_recovery",
+        cmap=plt.cm.Purples,
+        cmap_range=(0.40, 0.90),
+        linestyle="-",
+        cap_6jet_radius=1.0,
+    ),
+    # Amber, dashed: maximally separated from Durham blue, C/A purple and
+    # CaloJets green, and still distinguishable in greyscale.
+    "ee-kt": dict(
+        outdir="comparison_EEKt",
+        cmap=plt.cm.YlOrBr,
+        cmap_range=(0.35, 0.90),
+        linestyle=(0, (4, 2)),
+        cap_6jet_radius=1.0,
+    ),
+    # Genuine anti-kT: teal-green, dash-dot, so the three exponents read as
+    # purple (p=0) / amber (p=+1) / green (p=-1) against blue Durham.
+    "ee-akt": dict(
+        outdir="comparison_EEAntiKt",
+        cmap=plt.cm.GnBu,
+        cmap_range=(0.40, 0.92),
+        linestyle=(0, (5, 1, 1, 1)),
+        cap_6jet_radius=1.0,
+    ),
+}
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--inputDir", type=str, required=True)
 parser.add_argument(
-    "--AK-comparison", action="store_true"
-)  # If turned on, it will produce plots for comparison of anti-kt and Durham
-parser.add_argument(
-    "--energy-recovery", action="store_true"  # If toggled, it will turn on the
+    "--family",
+    choices=sorted(JET_FAMILIES),
+    default=None,
+    help="Draw the radius-scan comparison for one algorithm family, against "
+    "PF_Durham as the reference. Omit for the default PF / CaloJets / "
+    "IdealMatching figure set.",
 )
+# Deprecated aliases, kept so old command lines keep working.
+parser.add_argument("--AK-comparison", action="store_true", help=argparse.SUPPRESS)
+parser.add_argument("--energy-recovery", action="store_true", help=argparse.SUPPRESS)
 args = parser.parse_args()
+
+if args.AK_comparison and args.family is None:
+    args.family = "ee-ca-er" if args.energy_recovery else "ee-ca"
+    print(
+        "NOTE: --AK-comparison is deprecated; use --family {}. (The historical "
+        "'anti-kt' scan was in fact e+e- Cambridge/Aachen: the ee_genkt exponent "
+        "argument was never passed.)".format(args.family)
+    )
+
+family_key = args.family
+family = dict(JET_FAMILIES[family_key], **FAMILY_PLOTS[family_key]) if family_key else None
 
 inputDir = args.inputDir
 outputDir = os.path.join(inputDir, "plots")
-if args.AK_comparison:
-    if args.energy_recovery:
-        outputDir = os.path.join(outputDir, "comparison_AK_energy_recovery")
-    else:
-        outputDir = os.path.join(outputDir, "comparison_AK")
-os.makedirs(outputDir, exist_ok=True)
+if family:
+    outputDir = os.path.join(outputDir, family["outdir"])
+# NB: outputDir is created only once we know there is something to draw (see the
+# guards below), so an aborted run leaves no empty comparison_* directory behind.
 
 bins_E = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
 
@@ -107,27 +168,57 @@ def root_file_get_hist_and_edges(root_file, hist_name, rebin_factor=1):
     return y, edges
 
 
-if args.energy_recovery:
-    AK_prefix = "PF_E_recovery_AntiKtR"
-else:
-    AK_prefix = "PF_AntiKtR"
+def radius_of(method):
+    """Radius encoded in a method dir name of the selected family, else None.
 
-if args.AK_comparison:
+    Tries the family's canonical prefix and then its legacy one, so a tree whose
+    directories have not been renamed from PF_AntiKtR* still plots.
+    """
+    if family_key is None:
+        return None
+    return method_radius(method, family_key)
+
+
+if family:
+    # Reference curve plus one entry per radius, using whichever of the
+    # canonical / legacy directory names is actually present on disk.
     method_dict = {"PF_Durham": "Durham"}
-    for radius in [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]:
-        radius_str = int(radius * 10)
-        if len(str(radius_str)) == 1:
-            radius_str = f"0{radius_str}"
-        if args.energy_recovery:
-            method_dict[f"{AK_prefix}{radius_str}"] = f"AK{radius}-ER"
-        else:
-            method_dict[f"{AK_prefix}{radius_str}"] = f"AK{radius}"
+    for radius in RADIUS_SCAN:
+        label = "{} R={:.1f}{}".format(family["label"], radius, family["suffix"])
+        for prefix in family_prefixes(family_key):
+            candidate = "{}{}".format(prefix, radius_to_str(radius))
+            if os.path.isdir(os.path.join(inputDir, candidate)):
+                method_dict[candidate] = label
+                break
+    if len(method_dict) == 1:
+        # Only the Durham reference resolved, so this tree has none of the
+        # family's runs. Drawing would leave a comparison_* directory holding a
+        # single Durham curve, which reads as a result rather than as an absence.
+        print(
+            "No {} method directories (tried {}) under {} - nothing to compare, "
+            "exiting cleanly.".format(
+                family_key, "/".join(family_prefixes(family_key) or ["-"]), inputDir
+            )
+        )
+        sys.exit(0)
 else:
     method_dict = {
         "PF_Durham_IdealMatching": "PFJets + Ideal Matching",
         "PF_Durham": "PFJets",
         "CaloJets_Durham": "CaloJets",
     }
+
+
+def skip_in_per_process_mH(method, process):
+    cap = family["cap_6jet_radius"] if family else None
+    radius = radius_of(method)
+    return (
+        cap is not None
+        and radius is not None
+        and NUMBER_OF_JETS.get(process) == 6
+        and radius > cap
+    )
+
 
 process_for_detailed_bins_plots = [
     "p8_ee_ZH_vvbb_ecm240",
@@ -220,29 +311,26 @@ def get_func_fit(
     return xs, ys, popt, pcov
 
 
-if args.AK_comparison:
+if family:
     methods_filtered = sorted(method_dict.keys())
     method_color = {"PF_Durham": "#1f77b4"}  # nice blue for Durham
-    # build purple shades for AntiKt radii, getting darker with radius
-    ak_keys = [k for k in methods_filtered if k.startswith(AK_prefix)]
-
-    def _radius_key(k):
-        try:
-            return int(k.split("R")[-1])
-        except Exception:
-            return 0
-
-    ak_keys_sorted = sorted(ak_keys, key=_radius_key)
-    cmap = plt.cm.Purples
-    vals = np.linspace(0.4, 0.9, max(1, len(ak_keys_sorted)))
+    # One shade per radius, getting darker with R.
+    scan_keys = sorted(
+        (k for k in methods_filtered if radius_of(k) is not None), key=radius_of
+    )
+    cmap = family["cmap"]
+    lo, hi = family["cmap_range"]
+    vals = np.linspace(lo, hi, max(1, len(scan_keys)))
 
     def _rgba_to_hex(rgba):
         r, g, b, _ = rgba
         return "#{:02x}{:02x}{:02x}".format(int(r * 255), int(g * 255), int(b * 255))
 
-    for i, k in enumerate(ak_keys_sorted):
+    for i, k in enumerate(scan_keys):
         method_color[k] = _rgba_to_hex(cmap(vals[i]))
-    method_linestyle = {key: "-" for key in methods_filtered}
+    # Durham stays solid; the scan carries the family's linestyle.
+    method_linestyle = {key: family["linestyle"] for key in methods_filtered}
+    method_linestyle["PF_Durham"] = "-"
 
 else:
     methods_filtered = ["PF_Durham", "PF_Durham_IdealMatching"]
@@ -254,6 +342,49 @@ else:
         "PF_Durham": "-",
         "PF_Durham_IdealMatching": "--",
     }
+# A tree that has not had every method's resolution/mass stage run yet would
+# otherwise die on FileNotFoundError here and, under `set -euo pipefail`, take
+# the rest of create_plots.sh down with it. Drop the incomplete methods instead.
+REQUIRED_PICKLES = (
+    "plots_resolution/energy_fit_params_per_process.pkl",
+    "plots_mass/Higgs_mass_histograms_data.pkl",
+    "plots_resolution/angle_fit_params_per_process.pkl",
+)
+_complete, _incomplete = [], []
+for method in methods_filtered:
+    missing = [
+        rel
+        for rel in REQUIRED_PICKLES
+        if not os.path.exists(os.path.join(inputDir, method, rel))
+    ]
+    (_incomplete if missing else _complete).append(method)
+if _incomplete:
+    print(
+        "Skipping {} method(s) with no resolution/mass pickles yet: {}".format(
+            len(_incomplete), ", ".join(_incomplete)
+        )
+    )
+methods_filtered = _complete
+if not methods_filtered:
+    print(
+        "No method directory in {} has the pickles needed for this figure set{} - "
+        "nothing to draw, exiting cleanly.".format(
+            inputDir, " (--family {})".format(family_key) if family_key else ""
+        )
+    )
+    sys.exit(0)
+if family and not any(radius_of(m) is not None for m in methods_filtered):
+    # Only the Durham reference survived the pickle check, so every run of this
+    # family is still missing its resolution/mass stage. Drawing now would leave
+    # a comparison_* directory holding a lone Durham curve.
+    print(
+        "None of the {} radii under {} have their resolution/mass pickles yet - "
+        "nothing to compare, exiting cleanly.".format(family_key, inputDir)
+    )
+    sys.exit(0)
+
+os.makedirs(outputDir, exist_ok=True)
+
 for method in methods_filtered:
     f = pickle.load(
         open(
@@ -415,15 +546,16 @@ for method in methods_filtered:
                     linestyle=method_linestyle[method],
                 )
             ax_mH[1, 0].set_title(r"H → Light and b-jets")
-        ax_mH_per_process[row, col].hist(
-            Higgs_x,
-            bins=Higgs_edges,
-            weights=Higgs_y,
-            histtype="step",
-            label=f"{method_dict[method]}",
-            color=method_color[method],
-            linestyle=method_linestyle[method],
-        )
+        if not skip_in_per_process_mH(method, process):
+            ax_mH_per_process[row, col].hist(
+                Higgs_x,
+                bins=Higgs_edges,
+                weights=Higgs_y,
+                histtype="step",
+                label=f"{method_dict[method]}",
+                color=method_color[method],
+                linestyle=method_linestyle[method],
+            )
         ax_mH_per_process[row, col].set_title(label)
         ax_mH_per_process[row, col].text(
             0.97, 0.95, f"{NUMBER_OF_JETS[process]} jets",
@@ -563,7 +695,8 @@ for j in range(len(ax_mH_per_process)):
         ax_mH_per_process[j, i].set_xlim(90, 150)
         ax_mH_per_process[j, i].legend(fontsize=6.5)
 fig.tight_layout()
-annotate_matrix_plot_with_arrows(fig)
+# arrows dropped: the per-panel jet-count badge carries this
+# annotate_matrix_plot_with_arrows(fig)
 
 fig.tight_layout()
 fig_mH_path_per_process = os.path.join(outputDir, f"Higgs_mass_per_process.pdf")
@@ -579,13 +712,17 @@ fig_mH_twojets_path = os.path.join(outputDir, f"Higgs_mass_2jets.pdf")
 fig_mH.tight_layout()
 fig_mH_twojets.tight_layout()
 fig_mH_per_process.tight_layout()
-annotate_matrix_plot_with_arrows(fig_mH_per_process)
+# arrows dropped: the per-panel jet-count badge carries this
+# annotate_matrix_plot_with_arrows(fig_mH_per_process)
 fig_ang_phi.tight_layout()
-annotate_matrix_plot_with_arrows(fig_ang_phi)
+# arrows dropped: the per-panel jet-count badge carries this
+# annotate_matrix_plot_with_arrows(fig_ang_phi)
 fig_ang_theta.tight_layout()
-annotate_matrix_plot_with_arrows(fig_ang_theta)
+# arrows dropped: the per-panel jet-count badge carries this
+# annotate_matrix_plot_with_arrows(fig_ang_theta)
 fig_ang_eta.tight_layout()
-annotate_matrix_plot_with_arrows(fig_ang_eta)
+# arrows dropped: the per-panel jet-count badge carries this
+# annotate_matrix_plot_with_arrows(fig_ang_eta)
 
 print("Saving figure to", fig_mH_path)
 print("Saving figure to", fig_mH_twojets_path)
@@ -603,7 +740,7 @@ fig_mH.savefig(fig_mH_path)
 fig_mH_twojets.savefig(fig_mH_twojets_path)
 fig_mH_per_process.savefig(fig_mH_path_per_process)
 
-if args.AK_comparison:
+if family is not None:
     sys.exit(0)
 
 #############################################
@@ -983,7 +1120,8 @@ for ax in [ax_fit_trials, ax_fit_trials_calojets]:
             ax[i, j].set_xlabel("$E_{true}$ [GeV]")
 
 fig.tight_layout()
-annotate_matrix_plot_with_arrows(fig)
+# arrows dropped: the per-panel jet-count badge carries this
+# annotate_matrix_plot_with_arrows(fig)
 fig_path = os.path.join(outputDir, f"Jet_Energy_Resolution_PF_vs_CaloJets.pdf")
 
 print("Saving figure to", fig_path)
@@ -991,19 +1129,22 @@ fig.savefig(fig_path)
 
 # Save angular resolution plots
 fig_ang_phi_pf_calo.tight_layout()
-annotate_matrix_plot_with_arrows(fig_ang_phi_pf_calo)
+# arrows dropped: the per-panel jet-count badge carries this
+# annotate_matrix_plot_with_arrows(fig_ang_phi_pf_calo)
 fig_path_angular_phi_pf_calo = os.path.join(outputDir, f"Angular_Resolution_Phi_comparison_PF_vs_CaloJets.pdf")
 print("Saving figure to", fig_path_angular_phi_pf_calo)
 fig_ang_phi_pf_calo.savefig(fig_path_angular_phi_pf_calo)
 
 fig_ang_theta_pf_calo.tight_layout()
-annotate_matrix_plot_with_arrows(fig_ang_theta_pf_calo)
+# arrows dropped: the per-panel jet-count badge carries this
+# annotate_matrix_plot_with_arrows(fig_ang_theta_pf_calo)
 fig_path_angular_theta_pf_calo = os.path.join(outputDir, f"Angular_Resolution_Theta_comparison_PF_vs_CaloJets.pdf")
 print("Saving figure to", fig_path_angular_theta_pf_calo)
 fig_ang_theta_pf_calo.savefig(fig_path_angular_theta_pf_calo)
 
 fig_ang_eta_pf_calo.tight_layout()
-annotate_matrix_plot_with_arrows(fig_ang_eta_pf_calo)
+# arrows dropped: the per-panel jet-count badge carries this
+# annotate_matrix_plot_with_arrows(fig_ang_eta_pf_calo)
 fig_path_angular_eta_pf_calo = os.path.join(outputDir, f"Angular_Resolution_eta_comparison_PF_vs_CaloJets.pdf")
 print("Saving figure to", fig_path_angular_eta_pf_calo)
 fig_ang_eta_pf_calo.savefig(fig_path_angular_eta_pf_calo)
@@ -1021,18 +1162,20 @@ print("Saving figure to", fig_E_mH_gluons_path)
 fig_E_mH_gluons.savefig(fig_E_mH_gluons_path)
 
 fig_fit_trials_calojets.tight_layout()
-annotate_matrix_plot_with_arrows(fig_fit_trials_calojets)
+# arrows dropped: the per-panel jet-count badge carries this
+# annotate_matrix_plot_with_arrows(fig_fit_trials_calojets)
 path_cj = os.path.join(outputDir, f"Jet_Energy_Resolution_fitting_CaloJets.pdf")
 fig_fit_trials_calojets.savefig(path_cj)
 
 # Similar for fig_fit_trials
 
 fig_fit_trials.tight_layout()
-annotate_matrix_plot_with_arrows(fig_fit_trials)
+# arrows dropped: the per-panel jet-count badge carries this
+# annotate_matrix_plot_with_arrows(fig_fit_trials)
 path_pf = os.path.join(outputDir, f"Jet_Energy_Resolution_fitting_PF_Jets.pdf")
 fig_fit_trials.savefig(path_pf)
 
-if not args.AK_comparison:
+if family is None:
     for prefix in ["neutral", "charged", "photons"]:
         ###########################################
         # Resolution plots, calo jets vs. neutral part of PF jets

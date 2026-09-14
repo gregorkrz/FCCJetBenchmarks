@@ -34,19 +34,25 @@ folders = [
 folder_readable_names = ["PF Jets", "Calo Jets", "PF Jets, Ideal Matching"]
 
 if args.important_only:
-    folders = [
-        "PF_Durham",
-        "CaloJets_Durham",
-        "PF_E_recovery_AntiKtR06",
-        "PF_E_recovery_AntiKtR08",
-        "PF_E_recovery_AntiKtR10",
-        "PF_E_recovery_AntiKtR12",
-        "PF_AntiKtR06",
-        "PF_AntiKtR08",
-        "PF_AntiKtR10",
-        "PF_AntiKtR12"
-    ]
-    folder_readable_names = ["PF Jets", "Calo Jets", "AK06-ER", "AK08-ER", "AK10-ER", "AK12-ER", "AK06", "AK08", "AK10", "AK12"]
+    # The mid-range radii of each scan family. Directories named PF_AntiKtR* hold
+    # e+e- Cambridge/Aachen runs (the ee_genkt exponent was never passed), so they
+    # are listed under their new PF_EECambridgeR* names and labelled C/A; the
+    # legacy names are appended so an un-renamed tree still reports something.
+    folders = ["PF_Durham", "CaloJets_Durham"]
+    folder_readable_names = ["PF Jets", "Calo Jets"]
+    for _prefix, _label in (
+        ("PF_E_recovery_EECambridgeR", "C/A {}-ER"),
+        ("PF_EECambridgeR", "C/A {}"),
+        ("PF_EEKtR", "kT {}"),
+        ("PF_EEAntiKtR", "anti-kT {}"),
+        ("PF_E_recovery_AntiKtR", "C/A {}-ER (legacy dir)"),
+        ("PF_AntiKtR", "C/A {} (legacy dir)"),
+    ):
+        for _r in ("06", "08", "10", "12"):
+            _folder = _prefix + _r
+            if os.path.isdir(os.path.join(base_dir, _folder)):
+                folders.append(_folder)
+                folder_readable_names.append(_label.format(f"{int(_r) / 10:.1f}"))
 
 if args.all_folders:
     # Process all folders in the input directory (except the ones that start with 'plots')
