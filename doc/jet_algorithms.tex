@@ -1,0 +1,219 @@
+% Short note on the jet algorithms appearing in the FCCJetBenchmarks figures:
+% what each one actually computes, and which FastJet/FCCAnalyses call produces it.
+%
+% Build:  pdflatex jet_algorithms.tex
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}   % \gtrsim
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage[T1]{fontenc}
+
+\newcommand{\ee}{$e^{+}e^{-}$}
+\newcommand{\dij}{d_{ij}}
+\newcommand{\diB}{d_{iB}}
+
+\title{Jet algorithms used in the FCC jet benchmarks}
+\author{FCCJetBenchmarks}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\noindent
+All jets are built with FastJet through the \texttt{FCCAnalyses}
+\texttt{JetClustering::clustering\_*} functors, from
+\texttt{src/histmaker\_tools/jets.py}. Every algorithm below is a sequential
+recombination algorithm: repeatedly find the smallest of all $\dij$ and $\diB$,
+merge the pair $ij$ (or, if a $\diB$ is smallest, declare $i$ a jet / recombine
+it with the beam), and repeat. They differ only in the distance measure and in
+the termination rule.
+
+Unless stated otherwise the recombination scheme is the $E$-scheme (four-momenta
+are simply added, \texttt{recombination}${}=0$), and the input is the collection
+of visible particles with $|\eta| < 2.56$: stable generator particles with
+neutrinos removed for gen jets, particle-flow objects for reco jets.
+
+\section*{The \ee{} distance measures}
+
+The generalized \ee{} $k_T$ family (FastJet \texttt{ee\_genkt\_algorithm}) uses
+angular, not rapidity, distances, which is the natural choice at a lepton
+collider where there is no beam remnant to be boosted along:
+\begin{align}
+  \dij &= \min\!\left(E_i^{2p},\, E_j^{2p}\right)\,
+          \frac{1 - \cos\theta_{ij}}{1 - \cos R}\,,
+  &
+  \diB &= E_i^{2p}\,.
+  \label{eq:eegenkt}
+\end{align}
+The exponent $p$ selects the algorithm:
+\[
+  p = -1 \ \ (\text{anti-}k_T), \qquad
+  p = 0 \ \ (\text{Cambridge/Aachen}), \qquad
+  p = +1 \ \ (k_T).
+\]
+All three are run in these benchmarks, inclusively, over the same radius grid.
+Two properties of Eq.~\eqref{eq:eegenkt} matter for reading the figures:
+
+\begin{itemize}
+  \item The factor $1/(1-\cos R)$ is a \emph{global constant}: it never reorders
+        the $\dij$ among themselves. The entire $R$ dependence therefore enters
+        through the comparison of $\dij$ against $\diB$, i.e.\ through which
+        particles are split off into their own jet rather than merged. Small $R$
+        means more, narrower jets.
+  \item As $R \to \pi$ the beam term can no longer win, and \ee{} generalized
+        $k_T$ with $p=+1$ degenerates into the Durham algorithm below. Measured
+        on simulated 6-jet events, exclusive-to-$N$ clustering with $p=+1$ is
+        already \emph{bit-identical} to Durham for $R \gtrsim 0.6$. This is why
+        the $k_T$ family in these benchmarks is run \emph{inclusively}, where $R$
+        genuinely changes the jets.
+\end{itemize}
+
+\section*{Algorithms appearing in the figures}
+
+\paragraph{Durham (\ee{} $k_T$, exclusive).}
+FastJet \texttt{ee\_kt\_algorithm}; the classic LEP jet definition. It is
+Eq.~\eqref{eq:eegenkt} with $p=+1$ and no $R$ at all, i.e.\ a pure
+\[
+  y_{ij} = \frac{2\,\min(E_i^2, E_j^2)\,(1-\cos\theta_{ij})}{E_{\text{vis}}^2}\,,
+\]
+run in \emph{exclusive} mode: the clustering is stopped when exactly
+$N$ jets remain, with $N$ fixed per process to the expected number of
+final-state jets ($2$, $4$ or $6$; see \texttt{src/process\_config.py}).
+Because $N$ is imposed, there is no jet-multiplicity distribution to speak of
+and no radius to scan. Call:
+\begin{center}
+\texttt{JetClustering::clustering\_ee\_kt(2, N, 1, 0)}
+\end{center}
+(\texttt{exclusive}${}=2$ meaning ``exactly \texttt{cut} jets'', \texttt{cut}${}=N$,
+$E$-ordered output).
+
+\paragraph{\ee{} Cambridge/Aachen, inclusive, radius scan.}
+Eq.~\eqref{eq:eegenkt} with $p=0$, so $\dij$ is purely angular:
+$\dij = (1-\cos\theta_{ij})/(1-\cos R)$, independent of energy. Pairs are
+merged in order of increasing opening angle. Run inclusively, so the number of
+jets is an output, not an input. Scanned over
+$R = 0.4, 0.6, 0.8, 1.0, 1.2, 1.4$. Call:
+\begin{center}
+\texttt{JetClustering::clustering\_ee\_genkt(R, 0, 0, 0, 0, 0)}
+\end{center}
+Method directories \texttt{PF\_EECambridgeR04}\,\dots\,\texttt{PF\_EECambridgeR14}.
+
+\paragraph{\ee{} $k_T$, inclusive, radius scan.}
+Eq.~\eqref{eq:eegenkt} with $p=+1$: $\dij$ is weighted by the \emph{softer}
+of the two energies, so soft particles are clustered first and jets grow from
+the soft radiation inwards. Same inclusive mode and same radius grid as the C/A
+scan, which makes the two directly comparable at matched $R$. Call:
+\begin{center}
+\texttt{JetClustering::clustering\_ee\_genkt(R, 0, 0, 0, 0, 1)}
+\end{center}
+Method directories \texttt{PF\_EEKtR04}\,\dots\,\texttt{PF\_EEKtR14}.
+At equal $R$, $k_T$ merges considerably more aggressively than C/A: at $R=0.8$ in
+$Z(\to qq)H(\to WW \to qqqq)$, $74\%$ of events still yield $6$ jets under $k_T$
+against $98\%$ under C/A.
+
+\paragraph{\ee{} anti-$k_T$, inclusive, radius scan.}
+Eq.~\eqref{eq:eegenkt} with $p=-1$: $\dij$ is weighted by the \emph{inverse} of the
+harder energy, so hard particles cluster first and soft radiation is swept into the
+nearest hard core rather than forming jets of its own. Same inclusive mode and radius
+grid as the other two, making all three comparable at matched $R$. Call:
+\begin{center}
+\texttt{JetClustering::clustering\_ee\_genkt(R, 0, 0, 0, 0, -1)}
+\end{center}
+Method directories \texttt{PF\_EEAntiKtR04}\,\dots\,\texttt{PF\_EEAntiKtR14}.
+First produced in September 2026; before that the repository contained no genuine
+anti-$k_T$ run at all (see the naming history below).
+
+\paragraph{Ordering of the three exponents.}
+Merging becomes monotonically more aggressive as $p$ increases. Measured at $R=0.8$ in
+$Z(\to qq)H(\to WW \to qqqq)$ over $10^4$ events:
+
+\begin{center}
+\small
+\begin{tabular}{@{}rlcc@{}}
+\toprule
+$p$ & algorithm & events yielding 6 jets & fully-matched pass rate \\
+\midrule
+$-1$ & anti-$k_T$ & $99.8\%$ & $0.878$ \\
+$0$ & Cambridge/Aachen & $98.4\%$ & $0.815$ \\
+$+1$ & $k_T$ & $74.4\%$ & $0.611$ \\
+\midrule
+--- & Durham (exclusive $N$) & $100\%$ by construction & $0.866$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Energy recovery (the ``-ER'' variants).}
+Not a clustering algorithm but a post-processing step applied to the inclusive
+C/A output: the $N$ leading jets are kept and every surplus jet is recombined
+into them, so the event ends with exactly $N$ jets
+(\texttt{ZHfunctions::energy\_recovery}, \texttt{src/histmaker\_functions/functions.h}).
+It exists to recover the energy that inclusive clustering leaves in extra jets.
+Method directories \texttt{PF\_E\_recovery\_EECambridgeR04}\,\dots
+
+\paragraph{CaloJets.}
+Not clustered in this framework at all: the jets are read from the
+\texttt{CaloJetDurham} branch produced by Delphes, which applies the Durham
+algorithm to calorimeter towers rather than to particle-flow objects. Included
+as the ``no particle flow'' reference.
+
+\paragraph{Hadron-collider anti-$k_T$.}
+Available as \texttt{--jet-algorithm AK}, i.e.\ \texttt{clustering\_antikt}
+(FastJet \texttt{antikt\_algorithm}), with the usual $p_T$/rapidity measure
+\[
+  \dij = \min\!\left(p_{T,i}^{-2},\,p_{T,j}^{-2}\right)
+         \frac{\Delta R_{ij}^2}{R^2}\,,
+  \qquad
+  \diB = p_{T,i}^{-2}\,.
+\]
+It is not used in any of the production figures and is kept only for
+cross-checks: the $p_T$/rapidity measure is not the appropriate one at a lepton
+collider.
+
+\section*{Summary}
+
+\begin{center}
+\small
+\begin{tabular}{@{}llccl@{}}
+\toprule
+Label in figures & FastJet & $p$ & Mode & Method directory \\
+\midrule
+Durham / PFJets & \texttt{ee\_kt} & $+1$ & excl., $N$ jets & \texttt{PF\_Durham} \\
+CaloJets & \texttt{ee\_kt} (Delphes) & $+1$ & excl., $N$ jets & \texttt{CaloJets\_Durham} \\
+ee-C/A $R$ & \texttt{ee\_genkt} & $0$ & inclusive & \texttt{PF\_EECambridgeR*} \\
+ee-C/A $R$ -ER & \texttt{ee\_genkt} & $0$ & incl.\ $+$ recovery & \texttt{PF\_E\_recovery\_EECambridgeR*} \\
+ee-$k_T$ $R$ & \texttt{ee\_genkt} & $+1$ & inclusive & \texttt{PF\_EEKtR*} \\
+ee-anti-$k_T$ $R$ & \texttt{ee\_genkt} & $-1$ & inclusive & \texttt{PF\_EEAntiKtR*} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section*{Naming history (important when reading older figures)}
+
+Until September 2026 the C/A scan was labelled ``generalized \ee{} anti-$k_T$''
+and its output directories were named \texttt{PF\_AntiKtR*}. That label was
+wrong. The clustering call was
+\begin{center}
+\texttt{JetClustering::clustering\_ee\_genkt(R, 0, 0, 0)}
+\end{center}
+with only four arguments, whereas the constructor signature is
+\begin{center}
+\texttt{(radius, exclusive, cut, sorted, recombination=0, exponent=0.)}
+\end{center}
+The exponent therefore defaulted to $0$, so every one of those runs was
+Cambridge/Aachen and never anti-$k_T$. The histograms themselves are valid C/A
+data, so they were relabelled rather than re-run, and the directories renamed to
+\texttt{PF\_EECambridgeR*}.
+
+Genuine \ee{} anti-$k_T$ ($p=-1$) is now run separately, as \texttt{EEAKT} with output
+in \texttt{PF\_EEAntiKtR*}. Note that \texttt{EEAK} (no trailing \texttt{T}) and
+\texttt{EEAKT} are different algorithms: the former is the historical spelling that ran
+$p=0$ and survives only as a deprecated alias of \texttt{EECA}. Likewise
+\texttt{PF\_AntiKtR*} (Cambridge/Aachen, legacy) must not be confused with
+\texttt{PF\_EEAntiKtR*} (genuine anti-$k_T$).
+
+Any figure or table showing ``ee-AK'', ``anti-kt'' or \texttt{AntiKtR} should be
+read as \ee{} Cambridge/Aachen.
+
+\end{document}

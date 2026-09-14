@@ -24,19 +24,37 @@ The same plots are also available for CaloJets_Durham in [`fig/CaloJets_Durham/`
 
 
 Matrix plots comparing different methods for each physics process:
-- [`plots/comparison_AK/Higgs_mass_per_process.pdf`](fig/comparison_AK_Higgs_mass_per_process.pdf): Matrix plot of reconstructed Higgs mass per process for AK
-- [`plots/comparison_AK_energy_recovery/Higgs_mass_per_process.pdf`](fig/comparison_AK_energy_recovery_Higgs_mass_per_process.pdf): Matrix plot of reconstructed Higgs mass per process for AK with energy recovery
+- [`plots/comparison_EECambridge/Higgs_mass_per_process.pdf`](fig/comparison_EECambridge_Higgs_mass_per_process.pdf): Matrix plot of reconstructed Higgs mass per process for the $e^+e^-$ Cambridge/Aachen radius scan
+- [`plots/comparison_EECambridge_energy_recovery/Higgs_mass_per_process.pdf`](fig/comparison_EECambridge_energy_recovery_Higgs_mass_per_process.pdf): the same C/A scan with energy recovery
+- `plots/comparison_EEKt/Higgs_mass_per_process.pdf`: the same for the $e^+e^-$ $k_T$ radius scan
+- `plots/comparison_EEAntiKt/Higgs_mass_per_process.pdf`: the same for the genuine $e^+e^-$ anti-$k_T$ radius scan
+  (exponent $-1$; first produced 2026-09 — note this is *not* the old `PF_AntiKtR*` data, which was Cambridge/Aachen)
 - [`plots/Higgs_mass_per_process.pdf`](fig/Higgs_mass_per_process.pdf): Matrix plot of reconstructed Higgs mass per process for Durham
 - [`plots/Jet_Energy_Resolution.pdf`](fig/Jet_Energy_Resolution.pdf): Matrix plot of jet energy resolution per process, for PF, and PF with ideal matching
 - [`plots/Jet_Energy_Resolution_PF_vs_CaloJets.pdf`](fig/Jet_Energy_Resolution_PF_vs_CaloJets.pdf): Comparison of jet energy resolution for PF vs. Calo jets
+
+Per-event inspection:
+- `plots/event_displays/p8_ee_ZH_6jet_LF_ecm240_event_displays.pdf`: 20 event displays in the η–φ plane
+  for each of three windows of the $m_H$ "Physics" curve (`h_mH_gen`) — far below, at, and far above the
+  peak — for the 6-jet light-flavour process. Particles coloured by PID with marker area proportional to
+  $p_T$; gen-jet axes and cores overlaid, Higgs-matched jets badged. Produced by
+  `bash scripts/make_event_displays.sh`.
+
+Reference:
+- [`doc/jet_algorithms.tex`](doc/jet_algorithms.tex): short note on what each plotted algorithm actually
+  computes — the distance measures, exclusive vs. inclusive mode, and which method directory each figure
+  label corresponds to.
+- [`doc/clustering_algorithms_slides.tex`](doc/clustering_algorithms_slides.tex): the same material as a
+  10-page slide deck — the distance measures side by side, a diagram of how the exponent $p$ fixes the
+  merge order, the method-directory mapping, and the 2026-09 naming correction.
 
 Work in progress:
 - [`plots/Jet_Angular_Resolution_eta.pdf`](fig/Jet_Angular_Resolution_eta.pdf)
 - [`plots/Jet_Angular_Resolution_phi.pdf`](fig/Jet_Angular_Resolution_phi.pdf)
 
-Fraction of events passing the filtering criteria: (ER = Energy Recovery)
+Fraction of events passing the filtering criteria. (ER = Energy Recovery. "C/A" = $e^+e^-$ Cambridge/Aachen; these columns were previously labelled "AK", but that scan was never anti-$k_T$ - the `ee_genkt` exponent argument was never passed, so it defaulted to 0 = Cambridge/Aachen. See the Correction note in the README.)
 
-| Process | PF Jets | Calo Jets | AK06-ER | AK08-ER | AK10-ER | AK12-ER | AK06 | AK08 | AK10 | AK12 |
+| Process | PF Jets | Calo Jets | C/A 0.6-ER | C/A 0.8-ER | C/A 1.0-ER | C/A 1.2-ER | C/A 0.6 | C/A 0.8 | C/A 1.0 | C/A 1.2 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Z(→bb)H(→WW→bqbq) | 0.837 | 0.338 | 0.854 | 0.782 | 0.386 | 0.013 | **0.871** | 0.803 | 0.389 | 0.013 |
 | Z(→bb)H(→bb) | 0.954 | 0.738 | 0.952 | 0.933 | 0.879 | 0.609 | **0.958** | 0.942 | 0.888 | 0.610 |

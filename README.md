@@ -10,7 +10,7 @@ Jet performance benchmark toolkit using the FCCAnalysis framework.
 
 ## Overview
 
-This toolkit provides a comprehensive benchmarking framework for evaluating jet reconstruction performance in $e^+e^-$ collisions at the Future Circular Collider (FCC). The analysis focuses on ZH production processes at $\sqrt{s} = 240$ GeV, comparing different jet clustering algorithms (Durham, anti-kt, and generalized $e^+e^-$ anti-kt) and reconstruction approaches (particle flow vs. calorimeter jets).
+This toolkit provides a comprehensive benchmarking framework for evaluating jet reconstruction performance in $e^+e^-$ collisions at the Future Circular Collider (FCC). The analysis focuses on ZH production processes at $\sqrt{s} = 240$ GeV, comparing different jet clustering algorithms (Durham, and the generalized $e^+e^-$ anti-$k_T$, Cambridge/Aachen and $k_T$ radius scans) and reconstruction approaches (particle flow vs. calorimeter jets).
 
 The framework enables systematic evaluation of jet energy resolution, angular resolution, and reconstructed Higgs mass resolution across multiple physics processes with varying jet multiplicities (2, 4, and 6 jets). It supports both standard and ideal matching scenarios for truth-reconstruction comparisons.
 
@@ -57,12 +57,26 @@ python scripts/generate_analysis_jobs.py --input $PATH_TO_DATASET --output $PATH
 ```
 
 Useful flags:
-- `--algos ALGO1,ALGO2,...` — comma-separated list of clustering-algorithm families to generate jobs for. Choices: `durham` (PF_Durham), `calo` (CaloJets_Durham), `ideal` (PF_Durham_IdealMatching), `ak` (anti-kt radius scan), `ak-er` (anti-kt radius scan with energy recovery). Defaults to `durham,calo,ideal,ak,ak-er` (all algos).
+- `--algos ALGO1,ALGO2,...` — comma-separated list of clustering-algorithm families to generate jobs for. Choices: `durham` (PF_Durham), `calo` (CaloJets_Durham), `ideal` (PF_Durham_IdealMatching), `ca` ($e^+e^-$ Cambridge/Aachen radius scan, `PF_EECambridgeR*`), `ca-er` (the same with energy recovery), `kt` ($e^+e^-$ $k_T$ radius scan, `PF_EEKtR*`), `akt` (genuine $e^+e^-$ anti-$k_T$ radius scan, `PF_EEAntiKtR*`) — i.e. ee_genkt exponent 0, +1 and −1. `ak`/`ak-er` are accepted as aliases for `ca`/`ca-er` (see the Correction note in the algorithms section), so `ak` is **not** an alias for `akt`. There is deliberately no `kt-er`. Defaults to `durham,calo,ideal,ca,ca-er,kt,akt` (all algos).
 - `--logs PATH_TO_LOGS` — directory for SLURM stdout/stderr logs (default: `$PATH_TO_HISTOGRAMS/logs`).
 - `--no-submit` — write the SLURM job files but don't submit them with `sbatch`.
 - `--rerun-all` — submit all jobs, even those whose output ROOT file already exists (by default, jobs with an existing non-empty output file are skipped).
 
 The histmaker scripts produce a ROOT file with histograms for each process and each jet algorithm.
+
+> [!TIP]
+> The `atlas` account has a one-node group limit on `milano`, so submitting ~130 single-process jobs
+> funnels them onto one node and a cluster-side policy culls all but a couple (they die ~40 s in,
+> "CANCELLED by 0"). `scripts/make_batch.py` packs the runs that are still missing into a few wide jobs,
+> each asking for a whole node and running `PER_JOB` histmaker processes in parallel inside it. The
+> command lines are lifted verbatim from the `.slurm` files that `generate_analysis_jobs.py` wrote, so it
+> works for any algorithm family without knowing its directory-naming convention, and it is idempotent —
+> re-running it after preemptions just re-packs whatever is still outstanding:
+> ```bash
+> source env.sh
+> JOBS=$PWD/jobs_kt PER_JOB=12 python scripts/make_batch.py
+> for f in jobs_kt/batch/chunk_*.slurm; do sbatch $f; done
+> ```
 
 To see all the options of the histmaker command, simply run the command without any arguments:
 ```bash
@@ -215,22 +229,91 @@ d_{iB} = p_{T,i}^{-2}$$
 
 ---
 
-### Generalized $e^+e^-$ anti-kt
+### Generalized $e^+e^-$ algorithms (`ee_genkt`)
 
-As defined in [1], Section 4.5.
-
-Energy–angle version of anti-kt, more suitable for $e^+ e^-$ collisions:
+As defined in [1], Section 4.5. Energy–angle version of the generalized $k_T$ family,
+more suitable for $e^+ e^-$ collisions:
 
 $$
-d_{ij} = \min(E_i^{-2}, E_j^{-2}) (1 - \cos \theta_{ij}),
+d_{ij} = \min(E_i^{2p}, E_j^{2p}) \frac{1 - \cos \theta_{ij}}{1 - \cos R},
 \qquad
-d_{iB} = E_i^{-2}
+d_{iB} = E_i^{2p}
 $$
 
-**Anti-kt energy recovery**  
+The exponent $p$ selects the algorithm:
+
+| $p$ | algorithm | `--jet-algorithm` | method directories |
+| --- | --- | --- | --- |
+| $-1$ | $e^+e^-$ anti-$k_T$ | `EEAKT` | `PF_EEAntiKtR{04..14}` |
+| $0$ | $e^+e^-$ Cambridge/Aachen | `EECA` (`EEAK` = deprecated alias) | `PF_EECambridgeR{04..14}`, `PF_E_recovery_EECambridgeR{04..14}` |
+| $+1$ | $e^+e^-$ $k_T$ | `EEKT` | `PF_EEKtR{04..14}` |
+
+All three families are run **inclusively**, so the number of jets is an output rather
+than an input, and $R$ is scanned over `0.4, 0.6, 0.8, 1.0, 1.2, 1.4` (`RADIUS_SCAN` in
+`src/process_config.py`).
+
+> [!WARNING]
+> `--jet-algorithm EEAK` and `EEAKT` are **not** the same thing. `EEAK` (no trailing
+> `T`) is the historical spelling that never passed an exponent, so it ran $p=0$ and is
+> kept only as a deprecated alias of `EECA`. Genuine anti-$k_T$ is `EEAKT`, and its
+> directories are `PF_EEAntiKtR*` — note the `EE`, which distinguishes them from the
+> legacy `PF_AntiKtR*` C/A directories.
+
+Two properties of the distance measure are worth keeping in mind when reading the
+radius-scan figures:
+
+- The factor $1/(1-\cos R)$ is a global constant, so it never reorders the $d_{ij}$
+  among themselves. The **entire $R$ dependence enters through the $d_{ij}$ vs $d_{iB}$
+  comparison**, i.e. through which particles are split off into their own jet.
+- As $R \to \pi$ the beam term can no longer win and $p=+1$ degenerates into Durham
+  (FastJet's `JetDefinition.hh` notes "R > 2 and p=1 gives ee_kt"). Measured on
+  simulated 6-jet events, *exclusive*-to-$N$ clustering with $p=+1$ is already
+  bit-identical to Durham for $R \gtrsim 0.6$ — which is why the $k_T$ family is run
+  inclusively rather than exclusively.
+
+Merging gets monotonically more aggressive with increasing $p$. Measured at $R=0.8$ in
+$Z(\to qq)H(\to WW\to qqqq)$ over 10k events:
+
+| $p$ | algorithm | events yielding 6 jets | fully-matched pass rate |
+| --- | --- | --- | --- |
+| $-1$ | anti-$k_T$ | 99.8% | 0.878 |
+| $0$ | Cambridge/Aachen | 98.4% | 0.815 |
+| $+1$ | $k_T$ | 74.4% | 0.611 |
+| — | Durham (exclusive $N$) | 100% by construction | 0.866 |
+
+Anti-$k_T$ clusters hard-first and so barely merges away from the expected multiplicity;
+$k_T$ clusters soft-first and merges most.
+
+> [!IMPORTANT]
+> **Correction (2026-09): the scan formerly called "anti-kt" was Cambridge/Aachen.**
+> Until 2026-09 `src/histmaker_tools/jets.py` built the radius scan with
+> `JetClustering::clustering_ee_genkt(R, 0, 0, 0)` — only four arguments, whereas the
+> constructor is `(radius, exclusive, cut, sorted, recombination=0, exponent=0.)`. The
+> exponent therefore defaulted to `0`, so every one of those runs was
+> **Cambridge/Aachen and never anti-$k_T$**. The histograms are valid C/A data, so they
+> were relabelled rather than re-run, and the directories renamed
+> `PF_AntiKtR*` → `PF_EECambridgeR*` (`scripts/rename_ca_method_dirs.sh`). Any older
+> figure or table showing "ee-AK", "anti-kt" or `AntiKtR` should be read as
+> $e^+e^-$ Cambridge/Aachen. Genuine $e^+e^-$ anti-$k_T$ ($p=-1$) is run separately as
+> `EEAKT` / `PF_EEAntiKtR*`, first produced 2026-09.
+
+A short standalone note on all of this — the distance measures, the exclusive/inclusive
+modes and which method directory each figure label corresponds to — is in
+[`doc/jet_algorithms.tex`](doc/jet_algorithms.tex), and the
+same material in presentable form, with the measures side by side and a diagram of how $p$
+fixes the merge order, is in
+[`doc/clustering_algorithms_slides.tex`](doc/clustering_algorithms_slides.tex).
+The built PDFs are committed next to them ([`doc/jet_algorithms.pdf`](doc/jet_algorithms.pdf),
+[`doc/clustering_algorithms_slides.pdf`](doc/clustering_algorithms_slides.pdf)); rebuild either with
+`pdflatex <file>.tex`.
+
+**Energy recovery (the `-ER` variants)**  
 Similar to https://indico.cern.ch/event/1439509/contributions/6289574/attachments/2997180/5280612/AEConnelly_FCC.pdf,
 the jets are sorted by energy and the expected number of jets with the highest energy is selected first.
-Each extra jet gets recombined with the closest of these jets.
+Each extra jet gets recombined with the closest of these jets. Applied to the inclusive
+C/A scan only: there is deliberately no `kt-er` family, because energy recovery on a
+collection that already has exactly $N$ jets is the identity
+(`ZHfunctions::energy_recovery`, `src/histmaker_functions/functions.h`).
 
 ### Jet truth definition
 Gen jets are defined by clustering all final-state MC particles (excluding neutrinos) using the same jet algorithm
@@ -402,16 +485,90 @@ python src/plotting/mh_decomposition_plots.py --inputDir $PATH_TO_HISTOGRAMS
   and its kept fraction is reported as `kept_frac` in the summary table. For an apples-to-apples sample, re-run the two
   methods over a file subset with the filter disabled (see [Quick subset runs](#quick-subset-runs)).
 
+* **Event displays for the tails of the $m_H$ "Physics" curve** (placed in `plots/event_displays`).
+
+  The decomposition's "Physics" curve is `h_mH_gen`: the Higgs mass from *gen* jets built out of stable gen
+  particles, i.e. with a perfect detector, so its width is entirely a jet-definition / jet-assignment effect.
+  For `p8_ee_ZH_6jet_LF_ecm240` it is strikingly asymmetric — about 1% of entries below 108 GeV but 5% above
+  160 GeV. These displays show 20 individual events from each of three windows (far below, at, and far above
+  the peak) so the tails can be inspected directly:
+
+  ```bash
+  source env.sh
+  bash scripts/make_event_displays.sh                       # both stages, 20 per window
+  N_PER_WINDOW=3 MAX_FILES=1 bash scripts/make_event_displays.sh   # quick look
+  bash scripts/make_event_displays.sh --draw-only           # redraw from the existing payload
+  ```
+
+  Two stages, because unlike every other plotting step this one reads the **dataset** and re-runs the
+  clustering: per-event four-vectors exist nowhere under `$PATH_TO_HISTOGRAMS`, which holds only TH1Ds.
+  Stage 1 (`src/event_displays.py`) needs the container (ROOT + FCCAnalyses) and reuses the *same* helpers as
+  `src/histmaker.py`, so the events drawn are exactly the events that fill `h_mH_gen`; it writes a small
+  pickle. Stage 2 (`src/plotting/event_display_plots.py`) is plain matplotlib, so iterating on the figure is
+  cheap.
+
+  Output is a single multi-page PDF: a cover page recording the windows and their yields, then one page per
+  event in the η–φ plane with particles coloured by PID and **marker area proportional to $p_T$**, the gen-jet
+  axes and the 90% $p_T$ core of each jet outlined (Durham has no radius and assigns every particle to some
+  jet, so the full constituent set would sprawl across the plane), the Higgs-matched jets badged `[H]`, the
+  hard Higgs partons as stars with a connector to the jet each matched, and a per-event annotation box
+  (all four $m_H$ definitions, the per-jet table, the parton→jet assignment with each ΔR, and the
+  invisible / out-of-acceptance energy).
+
+  Stage 1 asserts per event that the summed constituent momenta reproduce each jet's momentum and that
+  $m_H$ recomputed from the Higgs-matched jets equals `inv_mass_gen`; it aborts rather than warning, since
+  a broken constituent→jet mapping would silently attribute particles to the wrong jets. Useful flags:
+  `--windows auto` (derive the windows from the histogram instead of the measured defaults),
+  `--window LABEL LOW HIGH` (repeatable), `--n-per-window`, `--max-files`, `--select`, `--process`.
+
 * Matrix plots of different metrics on which all the physics processes are summarized:
 ```bash
 # Main results
 python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS
 
-# Comparison of Durham and anti-kt, with and without energy recovery
-python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --AK-comparison
-python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --AK-comparison --energy-recovery
+# Comparison of Durham against each radius-scan family. Writes
+# plots/comparison_EECambridge/, plots/comparison_EECambridge_energy_recovery/,
+# plots/comparison_EEKt/ and plots/comparison_EEAntiKt/. Exits 0 with a message
+# if the tree has no method directories (or no pickles yet) for that family, so
+# it is safe to run all four on a partially-populated tree.
+python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --family ee-ca
+python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --family ee-ca-er
+python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --family ee-kt
+python src/plotting/joint_plots.py --inputDir $PATH_TO_HISTOGRAMS --family ee-akt
 
+# (--AK-comparison [--energy-recovery] still works as a deprecated alias for
+#  --family ee-ca [ee-ca-er].)
 ```
+
+* **$m_H$ grids over the three exponents** (placed in `plots/mh_grids/`). Two figure sets over the same
+  5x3 process matrix as the `joint_plots.py` matrix figures:
+
+  - `mH_grid_exponent_p{m1,0,p1}.pdf` — one figure per exponent, overlaying that exponent's six radii
+    plus Durham. Algorithm held fixed, radius varied.
+  - `mH_grid_radius_R{04..14}.pdf` — one figure per radius, overlaying $p = -1$, $0$, $+1$ plus Durham.
+    Radius held fixed, algorithm varied.
+
+```bash
+python src/plotting/mh_grid_plots.py --inputDir $PATH_TO_HISTOGRAMS
+
+# just one of the two sets
+python src/plotting/mh_grid_plots.py --inputDir $PATH_TO_HISTOGRAMS --sets exponent
+python src/plotting/mh_grid_plots.py --inputDir $PATH_TO_HISTOGRAMS --sets radius
+```
+
+  This exists separately from `joint_plots.py` for two reasons. It reads *only*
+  `plots_mass/Higgs_mass_histograms_data.pkl`, so it needs `mass_plots.py` to have run but neither of the
+  two much slower resolution stages (`extract_resolution_data.py` + `resolution_plots.py`) — it can
+  therefore be run as soon as the mass step finishes. And the per-radius, cross-family overlay is not
+  expressible in `joint_plots.py`, whose `--family` mode draws one family at a time.
+
+  Every legend entry carries that method's fully-matched-jets filter pass rate *for that process* in
+  brackets, e.g. `ee-kT R=0.8 (0.61)`, so a curve resting on a few percent of the events is visibly
+  flagged rather than looking like a result. For the same reason the 6-jet panels omit radii above
+  `MAX_RADIUS_FOR_6JETS` (1.0): with inclusive clustering a 6-jet event merges into fewer jets as $R$
+  grows, so the filter keeps ~1% of events at $R=1.2$ and essentially none at $R=1.4$. Every dropped
+  curve is printed on stdout rather than being silently omitted, as are the (exponent, radius)
+  combinations that have no mass pickle yet.
 
 * **Interactive dashboard**. Once `extract_resolution_data.py` + `resolution_plots.py` + `mass_plots.py` have been
   run for every method subfolder and `print_basic_stats.py --all-folders` has been run once, consolidate all their
@@ -439,8 +596,9 @@ python src/plotting/make_interactive_dashboard.py --data $PATH_TO_HISTOGRAMS/plo
     method/process; select a single (method, process) combination to instead see all four mH definitions overlaid
     (reco / gen / GT / reco-GT matched), same as `plots_mass/log_Higgs_mass_reco_vs_gen.pdf`.
   - One-click presets mirroring comparisons already made in `joint_plots.py` and in `presentation.pdf`: jet
-    multiplicity (2/4/6 jets), clustering algorithm scan (Durham vs. anti-kt radii), detector/matching comparison
-    (PF vs. Calo vs. ideal matching), energy recovery on/off (paired by anti-kt radius), B-hadron content scan
+    multiplicity (2/4/6 jets), one radius scan per family (Durham vs. $e^+e^-$ C/A and vs. $e^+e^-$ $k_T$), C/A vs. kT
+    at equal R, detector/matching comparison (PF vs. Calo vs. ideal matching), energy recovery on/off (paired by
+    C/A radius), B-hadron content scan
     (colored by the `process_config.py` flavour convention), and two Higgs-mass presets (clustering algorithm scan,
     detector comparison) showing the mH peak shift directly. Presets are computed from whatever methods/processes
     are actually present, so they degrade gracefully if a comparison's methods aren't in your dataset.
@@ -561,6 +719,15 @@ In addition to this, `print_basic_stats.py --all-folders` writes `basic_stats_su
 different methods, as well as the consolidated `dashboard_data.json`, the per-histogram `full_hist/` folder, and
 the interactive `dashboard.html`, are generated in folder **`plots/`**.
 
+The method directories currently produced are `PF_Durham`, `CaloJets_Durham`, `PF_Durham_IdealMatching`,
+`PF_EECambridgeR{04,06,08,10,12,14}`, `PF_E_recovery_EECambridgeR{04..14}`,
+`PF_EEKtR{04..14}` and `PF_EEAntiKtR{04..14}`.
+(`PF_AntiKtR*` / `PF_E_recovery_AntiKtR*` are the pre-2026-09 names of the Cambridge/Aachen directories; the
+plotting scripts still recognise them as aliases so an un-renamed tree keeps working.) Under `plots/` the
+family comparisons land in `comparison_EECambridge/`, `comparison_EECambridge_energy_recovery/`,
+`comparison_EEKt/` and `comparison_EEAntiKt/`, the cross-exponent $m_H$ grids in `mh_grids/`, and the
+event displays in `event_displays/`.
+
 ## Project Structure
 
 ```
@@ -582,6 +749,7 @@ FCCJetBenchmarks/
 │       ├── make_interactive_dashboard.py  # Stage 4: JSON -> self-contained HTML dashboard
 │       ├── mass_plots.py         # Higgs mass reconstruction
 │       ├── joint_plots.py        # Summary matrix plots
+│       ├── mh_grid_plots.py      # mH grids per exponent / per radius (mass pickles only)
 │       └── ...
 ├── scripts/
 │   ├── create_plots.sh           # Main plotting workflow
@@ -676,12 +844,12 @@ fccanalysis run src/histmaker.py -- \
 
 ### Anti-kt with energy recovery
 
-To use anti-kt algorithm with energy recovery:
+To use the *hadron-collider* anti-kt algorithm (`clustering_antikt`, kept for cross-checks only) with energy recovery:
 
 ```bash
 fccanalysis run src/histmaker.py -- \
   --input $PATH_TO_DATASET \
-  --output $PATH_TO_HISTOGRAMS/PF_AntiKtR06_Erecovery \
+  --output $PATH_TO_HISTOGRAMS/PF_HadronAntiKtR06_Erecovery \
   --jet-algorithm AK \
   --AK-radius 0.6 \
   --energy-recovery
