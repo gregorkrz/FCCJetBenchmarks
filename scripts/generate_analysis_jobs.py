@@ -1,5 +1,9 @@
 import argparse
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.process_config import RADIUS_SCAN, radius_to_str  # noqa: E402
 
 parser = argparse.ArgumentParser(description="Generate and optionally submit SLURM jobs for the FCC jet histmaker.")
 parser.add_argument("--input", required=True, metavar="PATH_TO_DATASET",
@@ -12,12 +16,20 @@ parser.add_argument("--no-submit", action="store_true",
                     help="Write SLURM job files but do not submit them with sbatch")
 parser.add_argument("--rerun-all", action="store_true",
                     help="Submit all jobs, even those whose output ROOT file already exists")
-parser.add_argument("--algos", default="durham,calo,ideal,ak,ak-er", metavar="ALGO1,ALGO2,...",
+parser.add_argument("--algos", default="durham,calo,ideal,ca,ca-er,kt,akt", metavar="ALGO1,ALGO2,...",
                     help="Comma-separated list of algo families to generate jobs for. "
                          "Choices: durham (PF_Durham), calo (CaloJets_Durham), "
-                         "ideal (PF_Durham_IdealMatching), ak (anti-kt radius scan), "
-                         "ak-er (anti-kt radius scan with energy recovery). "
-                         "Default: durham,calo,ideal,ak,ak-er (all algos)")
+                         "ideal (PF_Durham_IdealMatching), ca (e+e- Cambridge/Aachen "
+                         "radius scan, PF_EECambridgeR*), ca-er (the same with energy "
+                         "recovery), kt (e+e- kT radius scan, PF_EEKtR*), "
+                         "akt (genuine e+e- anti-kT radius scan, PF_EEAntiKtR*). "
+                         "These three are ee_genkt exponent 0, +1 and -1. "
+                         "'ak'/'ak-er' are accepted as aliases for 'ca'/'ca-er': the "
+                         "historical 'anti-kt' scan was in fact Cambridge/Aachen, "
+                         "because the ee_genkt exponent argument was never passed - "
+                         "so 'ak' is NOT an alias for 'akt'. "
+                         "There is deliberately no 'kt-er'. "
+                         "Default: durham,calo,ideal,ca,ca-er,kt,akt (all algos)")
 parser.add_argument("--extra-args", default="", metavar="'--flag ...'",
                     help="Extra arguments appended to every histmaker command, "
                          "e.g. --extra-args '--no-filter-fully-matched'")
@@ -35,8 +47,14 @@ parser.add_argument("--time", default="10:00:00", metavar="HH:MM:SS",
                          "file subset needs far less)")
 args = parser.parse_args()
 
-VALID_ALGOS = {"durham", "calo", "ideal", "ak", "ak-er"}
-selected_algos = {a.strip().lower() for a in args.algos.split(",") if a.strip()}
+VALID_ALGOS = {"durham", "calo", "ideal", "ca", "ca-er", "kt", "akt"}
+# Pre-2026-09 names. The "anti-kt" scan was really Cambridge/Aachen, so ak -> ca.
+ALGO_ALIASES = {"ak": "ca", "ak-er": "ca-er"}
+selected_algos = {
+    ALGO_ALIASES.get(a.strip().lower(), a.strip().lower())
+    for a in args.algos.split(",")
+    if a.strip()
+}
 unknown_algos = selected_algos - VALID_ALGOS
 if unknown_algos:
     parser.error(
@@ -98,16 +116,6 @@ process_list = [
 output_folder_name = {}
 commands = {}
 
-AK_RADII = [0.4, 0.6, 0.8, 1.0, 1.2, 1.4]
-
-
-def radius_to_str(radius):
-    radius_str = int(radius * 10)
-    if len(str(radius_str)) == 1:
-        radius_str = f"0{radius_str}"
-    return radius_str
-
-
 ## Commands for the main clustering algorithms: Durham, Durham with ideal matching, and CaloJets
 if "durham" in selected_algos:
     commands["Durham"] = command.format(output_folder_name="PF_Durham", jet_algo="Durham")
@@ -125,27 +133,36 @@ if "ideal" in selected_algos:
     ) + " --ideal-matching"
     output_folder_name["DurhamIdealMatching"] = "PF_Durham_IdealMatching"
 
-if "ak" in selected_algos:
-    # Commands for the e+e- anti-kt algorithm
-    for radius in AK_RADII:
-        radius_str = radius_to_str(radius)
-        command_name = f"AK{radius_str}"
-        commands[command_name] = command.format(
-            output_folder_name=f"PF_AntiKtR{radius_str}",
-            jet_algo=f"EEAK",
-        ) + " --AK-radius {}".format(radius)
-        output_folder_name[command_name] = f"PF_AntiKtR{radius_str}"
+# The radius-scan families, all using JetClustering::clustering_ee_genkt with an
+# explicit exponent (see EE_GENKT_EXPONENT in src/histmaker_tools/jets.py):
+#   ca     exponent  0  -> e+e- Cambridge/Aachen. This is what the directories
+#                          formerly called PF_AntiKtR* actually contain.
+#   kt     exponent +1  -> e+e- kT, clustered inclusively so that R genuinely
+#                          changes the jets. There is deliberately no "kt-er":
+#                          see the --algos help.
+#   akt    exponent -1  -> genuine e+e- anti-kT. NB --jet-algorithm EEAKT, which
+#                          is NOT the same as the historical EEAK (that ran p=0).
+# (algo key, command-name prefix, method-dir prefix, --jet-algorithm, extra flags)
+RADIUS_FAMILIES = [
+    ("ca",    "CA",            "PF_EECambridgeR",            "EECA", ""),
+    ("ca-er", "e_recovery_CA", "PF_E_recovery_EECambridgeR", "EECA", " --energy-recovery"),
+    ("kt",    "KT",            "PF_EEKtR",                   "EEKT", ""),
+    ("akt",   "AKT",           "PF_EEAntiKtR",               "EEAKT", ""),
+]
 
-if "ak-er" in selected_algos:
-    # Commands for the e+e- anti-kt algorithm with energy recovery
-    for radius in AK_RADII:
+for algo, cmd_prefix, dir_prefix, jet_algo, extra_flags in RADIUS_FAMILIES:
+    if algo not in selected_algos:
+        continue
+    for radius in RADIUS_SCAN:
         radius_str = radius_to_str(radius)
-        command_name = f"e_recovery_AK{radius_str}"
-        commands[command_name] = command.format(
-            output_folder_name=f"PF_E_recovery_AntiKtR{radius_str}",
-            jet_algo=f"EEAK",
-        ) + " --AK-radius {} --energy-recovery".format(radius)
-        output_folder_name[command_name] = f"PF_E_recovery_AntiKtR{radius_str}"
+        command_name = f"{cmd_prefix}{radius_str}"
+        folder = f"{dir_prefix}{radius_str}"
+        commands[command_name] = (
+            command.format(output_folder_name=folder, jet_algo=jet_algo)
+            + " --AK-radius {}".format(radius)
+            + extra_flags
+        )
+        output_folder_name[command_name] = folder
 
 
 
