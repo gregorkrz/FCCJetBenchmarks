@@ -66,6 +66,8 @@ CA_METHODS = [f"PF_EECambridgeR{r}" for r in SCAN_RADII]
 CA_ER_METHODS = [f"PF_E_recovery_EECambridgeR{r}" for r in SCAN_RADII]
 KT_METHODS = [f"PF_EEKtR{r}" for r in SCAN_RADII]
 AKT_METHODS = [f"PF_EEAntiKtR{r}" for r in SCAN_RADII]
+KT_ER_METHODS = [f"PF_E_recovery_EEKtR{r}" for r in SCAN_RADII]
+AKT_ER_METHODS = [f"PF_E_recovery_EEAntiKtR{r}" for r in SCAN_RADII]
 for _i, _r in enumerate(SCAN_RADII):
     _R = int(_r) / 10
     _ca = plt.cm.plasma(0.05 + 0.8 * _i / (len(SCAN_RADII) - 1))
@@ -76,6 +78,8 @@ for _i, _r in enumerate(SCAN_RADII):
         (f"PF_E_recovery_EECambridgeR{_r}", f"ee-C/A R={_R:.1f} (E-rec)", _ca),
         (f"PF_EEKtR{_r}", f"ee-$k_T$ R={_R:.1f}", _kt),
         (f"PF_EEAntiKtR{_r}", f"ee-anti-$k_T$ R={_R:.1f}", _akt),
+        (f"PF_E_recovery_EEKtR{_r}", f"ee-$k_T$ R={_R:.1f} (E-rec)", _kt),
+        (f"PF_E_recovery_EEAntiKtR{_r}", f"ee-anti-$k_T$ R={_R:.1f} (E-rec)", _akt),
         # Legacy directory names for the same C/A runs.
         (f"PF_AntiKtR{_r}", f"ee-C/A R={_R:.1f}", _ca),
         (f"PF_E_recovery_AntiKtR{_r}", f"ee-C/A R={_R:.1f} (E-rec)", _ca),
@@ -998,6 +1002,10 @@ def main():
          "points only, Durham vs. the e+e- kT radius scan"),
         (AKT_METHODS, "JER_grid_points_Durham_vs_EEAntiKt.pdf",
          "points only, Durham vs. the genuine e+e- anti-kT radius scan"),
+        (KT_ER_METHODS, "JER_grid_points_Durham_vs_EEKt_Erecovery.pdf",
+         "points only, Durham vs. the e+e- kT radius scan with energy recovery"),
+        (AKT_ER_METHODS, "JER_grid_points_Durham_vs_EEAntiKt_Erecovery.pdf",
+         "points only, Durham vs. the e+e- anti-kT radius scan with energy recovery"),
         # Legacy directory names for the C/A runs, in case the tree has not
         # been renamed. Same figure, so only drawn if the canonical dirs are absent.
         ([f"PF_AntiKtR{r}" for r in SCAN_RADII],

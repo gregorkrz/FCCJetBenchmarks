@@ -66,6 +66,27 @@ JET_FAMILIES = {
         suffix="",
         exclusive_N=False,
     ),
+    # Energy-recovery variants of the kT and anti-kT scans. ER keeps the N
+    # leading jets and merges every surplus jet into them, so it only acts when
+    # the inclusive clustering overproduces. How much that matters depends
+    # strongly on N: measured at R=0.4 on Z(->vv)H(->qq) (N=2) it moves the mH
+    # peak from 119.9 to 124.9 GeV and makes the result independent of both R
+    # and exponent, whereas on the 6-jet light-flavour process at R>=0.8 the
+    # clustering already yields <= N jets and ER is the identity.
+    "ee-kt-er": dict(
+        prefix="PF_E_recovery_EEKtR",
+        legacy_prefix=None,
+        label="ee-$k_T$",
+        suffix="-ER",
+        exclusive_N=False,
+    ),
+    "ee-akt-er": dict(
+        prefix="PF_E_recovery_EEAntiKtR",
+        legacy_prefix=None,
+        label="ee-anti-$k_T$",
+        suffix="-ER",
+        exclusive_N=False,
+    ),
 }
 
 

@@ -16,20 +16,21 @@ parser.add_argument("--no-submit", action="store_true",
                     help="Write SLURM job files but do not submit them with sbatch")
 parser.add_argument("--rerun-all", action="store_true",
                     help="Submit all jobs, even those whose output ROOT file already exists")
-parser.add_argument("--algos", default="durham,calo,ideal,ca,ca-er,kt,akt", metavar="ALGO1,ALGO2,...",
+parser.add_argument("--algos", default="durham,calo,ideal,ca,ca-er,kt,kt-er,akt,akt-er", metavar="ALGO1,ALGO2,...",
                     help="Comma-separated list of algo families to generate jobs for. "
                          "Choices: durham (PF_Durham), calo (CaloJets_Durham), "
                          "ideal (PF_Durham_IdealMatching), ca (e+e- Cambridge/Aachen "
                          "radius scan, PF_EECambridgeR*), ca-er (the same with energy "
                          "recovery), kt (e+e- kT radius scan, PF_EEKtR*), "
                          "akt (genuine e+e- anti-kT radius scan, PF_EEAntiKtR*). "
-                         "These three are ee_genkt exponent 0, +1 and -1. "
+                         "These three are ee_genkt exponent 0, +1 and -1, and "
+                         "each has an '-er' energy-recovery variant "
+                         "(ca-er, kt-er, akt-er). "
                          "'ak'/'ak-er' are accepted as aliases for 'ca'/'ca-er': the "
                          "historical 'anti-kt' scan was in fact Cambridge/Aachen, "
                          "because the ee_genkt exponent argument was never passed - "
                          "so 'ak' is NOT an alias for 'akt'. "
-                         "There is deliberately no 'kt-er'. "
-                         "Default: durham,calo,ideal,ca,ca-er,kt,akt (all algos)")
+                         "Default: durham,calo,ideal,ca,ca-er,kt,kt-er,akt,akt-er (all algos)")
 parser.add_argument("--extra-args", default="", metavar="'--flag ...'",
                     help="Extra arguments appended to every histmaker command, "
                          "e.g. --extra-args '--no-filter-fully-matched'")
@@ -47,7 +48,7 @@ parser.add_argument("--time", default="10:00:00", metavar="HH:MM:SS",
                          "file subset needs far less)")
 args = parser.parse_args()
 
-VALID_ALGOS = {"durham", "calo", "ideal", "ca", "ca-er", "kt", "akt"}
+VALID_ALGOS = {"durham", "calo", "ideal", "ca", "ca-er", "kt", "kt-er", "akt", "akt-er"}
 # Pre-2026-09 names. The "anti-kt" scan was really Cambridge/Aachen, so ak -> ca.
 ALGO_ALIASES = {"ak": "ca", "ak-er": "ca-er"}
 selected_algos = {
@@ -138,16 +139,21 @@ if "ideal" in selected_algos:
 #   ca     exponent  0  -> e+e- Cambridge/Aachen. This is what the directories
 #                          formerly called PF_AntiKtR* actually contain.
 #   kt     exponent +1  -> e+e- kT, clustered inclusively so that R genuinely
-#                          changes the jets. There is deliberately no "kt-er":
-#                          see the --algos help.
+#                          changes the jets.
 #   akt    exponent -1  -> genuine e+e- anti-kT. NB --jet-algorithm EEAKT, which
 #                          is NOT the same as the historical EEAK (that ran p=0).
+# Each has an "-er" variant applying ZHfunctions::energy_recovery, which keeps
+# the N leading jets and merges the surplus back in. It only acts when the
+# clustering overproduces, so its effect grows as N shrinks: large for the
+# 2-jet processes, nil for the 6-jet ones at R >= 0.8.
 # (algo key, command-name prefix, method-dir prefix, --jet-algorithm, extra flags)
 RADIUS_FAMILIES = [
     ("ca",    "CA",            "PF_EECambridgeR",            "EECA", ""),
     ("ca-er", "e_recovery_CA", "PF_E_recovery_EECambridgeR", "EECA", " --energy-recovery"),
     ("kt",    "KT",            "PF_EEKtR",                   "EEKT", ""),
     ("akt",   "AKT",           "PF_EEAntiKtR",               "EEAKT", ""),
+    ("kt-er",  "e_recovery_KT",  "PF_E_recovery_EEKtR",      "EEKT",  " --energy-recovery"),
+    ("akt-er", "e_recovery_AKT", "PF_E_recovery_EEAntiKtR",  "EEAKT", " --energy-recovery"),
 ]
 
 for algo, cmd_prefix, dir_prefix, jet_algo, extra_flags in RADIUS_FAMILIES:

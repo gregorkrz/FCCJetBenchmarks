@@ -59,6 +59,22 @@ FAMILY_PLOTS = {
         linestyle=(0, (5, 1, 1, 1)),
         cap_6jet_radius=1.0,
     ),
+    # Energy-recovery variants: same hue as their plain twin, so a reader can
+    # tell at a glance which exponent a curve belongs to.
+    "ee-kt-er": dict(
+        outdir="comparison_EEKt_energy_recovery",
+        cmap=plt.cm.YlOrBr,
+        cmap_range=(0.35, 0.90),
+        linestyle=(0, (4, 2)),
+        cap_6jet_radius=1.0,
+    ),
+    "ee-akt-er": dict(
+        outdir="comparison_EEAntiKt_energy_recovery",
+        cmap=plt.cm.GnBu,
+        cmap_range=(0.40, 0.92),
+        linestyle=(0, (5, 1, 1, 1)),
+        cap_6jet_radius=1.0,
+    ),
 }
 
 parser = argparse.ArgumentParser()

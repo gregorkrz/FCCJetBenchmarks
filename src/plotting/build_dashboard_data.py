@@ -63,6 +63,8 @@ _SCAN_PREFIXES = [
     ("PF_AntiKtR", "PF ee-C/A R={:.1f}", "ee_ca"),
     ("PF_EEKtR", "PF ee-kT R={:.1f}", "ee_kt"),
     ("PF_EEAntiKtR", "PF ee-anti-kT R={:.1f}", "ee_akt"),
+    ("PF_E_recovery_EEKtR", "PF ee-kT R={:.1f} (E recovery)", "ee_kt_er"),
+    ("PF_E_recovery_EEAntiKtR", "PF ee-anti-kT R={:.1f} (E recovery)", "ee_akt_er"),
 ]
 
 _FIXED_LABELS = {

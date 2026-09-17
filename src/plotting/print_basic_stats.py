@@ -45,6 +45,8 @@ if args.important_only:
         ("PF_EECambridgeR", "C/A {}"),
         ("PF_EEKtR", "kT {}"),
         ("PF_EEAntiKtR", "anti-kT {}"),
+        ("PF_E_recovery_EEKtR", "kT {}-ER"),
+        ("PF_E_recovery_EEAntiKtR", "anti-kT {}-ER"),
         ("PF_E_recovery_AntiKtR", "C/A {}-ER (legacy dir)"),
         ("PF_AntiKtR", "C/A {} (legacy dir)"),
     ):

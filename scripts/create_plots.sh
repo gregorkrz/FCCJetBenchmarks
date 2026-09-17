@@ -79,7 +79,7 @@ if [[ "$HTML_ONLY" == false ]]; then
     # One radius-scan comparison per algorithm family. joint_plots.py exits 0
     # with a message when a family has no method directories (or no pickles) in
     # this tree, so a partially-populated tree does not abort the pipeline.
-    for FAMILY in ee-ca ee-ca-er ee-kt ee-akt; do
+    for FAMILY in ee-ca ee-ca-er ee-kt ee-kt-er ee-akt ee-akt-er; do
         python src/plotting/joint_plots.py --inputDir $INPUT_DIR --family "$FAMILY"
     done
 
