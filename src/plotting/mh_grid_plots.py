@@ -51,13 +51,23 @@ REFERENCE_COLOR = "#1f77b4"
 # should appear in a legend. `family` keys match src/process_config.JET_FAMILIES;
 # the colours match the convention used across the repo's figures and slides.
 EXPONENTS = [
-    dict(p=-1, family="ee-akt", tag="m1", label=r"ee-anti-$k_T$",
+    dict(p=-1, family="ee-akt", family_er="ee-akt-er", tag="m1",
+         label=r"ee-anti-$k_T$",
          color="#2A9D8F", cmap=plt.cm.GnBu, cmap_range=(0.40, 0.92)),
-    dict(p=0, family="ee-ca", tag="0", label="ee-C/A",
+    dict(p=0, family="ee-ca", family_er="ee-ca-er", tag="0", label="ee-C/A",
          color="#7A3CBF", cmap=plt.cm.Purples, cmap_range=(0.40, 0.90)),
-    dict(p=1, family="ee-kt", tag="p1", label=r"ee-$k_T$",
+    dict(p=1, family="ee-kt", family_er="ee-kt-er", tag="p1", label=r"ee-$k_T$",
          color="#D18B00", cmap=plt.cm.YlOrBr, cmap_range=(0.35, 0.90)),
 ]
+
+# Energy recovery keeps the N leading jets and merges the surplus back in, so it
+# only acts where the clustering overproduces. Its effect is therefore governed
+# by N: at R=0.4 on Z(->vv)H(->qq) (N=2) it moves the mH peak from 119.9 to
+# 124.9 GeV and makes the result independent of both radius and exponent, while
+# on the 6-jet processes at R >= 0.8 the clustering already yields <= N jets and
+# it is the identity. Drawn as a parallel figure set rather than overlaid, since
+# a panel with both would carry 8 curves.
+VARIANTS = {"plain": ("family", ""), "er": ("family_er", "_Erecovery")}
 
 # With inclusive clustering a 6-jet event merges into fewer jets as R grows, so
 # the fully-matched filter leaves almost nothing at large R (measured for C/A:
@@ -111,17 +121,42 @@ def pass_rate(input_dir, method, process):
         return None
 
 
-def step_hist(ax, entry, label, color, linestyle):
-    """Draw one mH histogram as a step outline. Returns the integral."""
+def window_area(entry):
+    """Fraction of the (full-range-normalized) distribution inside MH_XLIM."""
     x = np.asarray(entry["x_vals_reco"], dtype=float)
     y = np.asarray(entry["y_vals_reco"], dtype=float)
     if x.size < 2:
         return 0.0
     width = x[1] - x[0]
+    m = (x >= MH_XLIM[0]) & (x < MH_XLIM[1])
+    return float((y[m] * width).sum())
+
+
+def step_hist(ax, entry, label, color, linestyle, normalize="full"):
+    """Draw one mH histogram as a step outline; return its in-window area.
+
+    mass_plots.py already stored these as a density with unit area over the FULL
+    0-250 GeV histogram (underflow excluded, i.e. events where invariant_mass
+    returned -1 because the Higgs jets were not all matched are left out). The
+    plotted window is narrower than that, so the visible area is < 1 and differs
+    between curves - in the 6-jet panels it ranges from ~91% (Durham) to ~72%
+    (anti-kT at R=0.8), which by itself scales Durham up by ~1.25x relative to
+    the scan curves. normalize="window" divides that out so only the shape
+    inside the window is compared.
+    """
+    x = np.asarray(entry["x_vals_reco"], dtype=float)
+    y = np.asarray(entry["y_vals_reco"], dtype=float)
+    if x.size < 2:
+        return 0.0
+    width = x[1] - x[0]
+    in_window = (x >= MH_XLIM[0]) & (x < MH_XLIM[1])
+    area = float((y[in_window] * width).sum())
+    if normalize == "window" and area > 0:
+        y = y / area
     edges = np.concatenate((x - width / 2, [x[-1] + width / 2]))
     ax.hist(x, bins=edges, weights=y, histtype="step",
             label=label, color=color, linestyle=linestyle)
-    return float(y.sum())
+    return area
 
 
 def new_grid():
@@ -129,7 +164,7 @@ def new_grid():
     return fig, ax
 
 
-def finish_grid(fig, ax, title):
+def finish_grid(fig, ax, title, normalize="full"):
     for row in range(ax.shape[0]):
         for col in range(ax.shape[1]):
             a = ax[row, col]
@@ -139,15 +174,17 @@ def finish_grid(fig, ax, title):
             a.set_xlabel("$m_H$ [GeV]")
             a.set_xlim(*MH_XLIM)
             a.grid()
-            a.legend(fontsize=6.0, loc="upper left", framealpha=0.85,
+            a.legend(fontsize=4.0, loc="lower left", framealpha=0.85,
                      borderpad=0.3, labelspacing=0.25, handlelength=1.6)
-    fig.suptitle(title + "\n" + r"legend: (n) = fraction of events passing the "
-                 r"fully-matched-jets filter for that process",
-                 fontsize=12)
+    note = ("legend: (pass rate | % of the distribution inside this window).  "
+            + ("curves normalized to unit area over the full 0-250 GeV range"
+               if normalize == "full"
+               else "curves renormalized to unit area inside this window"))
+    fig.suptitle(title + "\n" + note, fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.975))
 
 
-def draw_panels(ax, curves, input_dir):
+def draw_panels(ax, curves, input_dir, normalize="full"):
     """curves: list of (method, label, color, linestyle). Returns dropped list."""
     dropped = []
     caches = {}
@@ -176,9 +213,14 @@ def draw_panels(ax, curves, input_dir):
                 continue
             # Legend carries this method's filter pass rate *for this process*,
             # so a curve resting on 1% of the events is visibly flagged.
+            # Two bracketed numbers: the fully-matched-jets filter pass rate,
+            # and the fraction of the full-range-normalized distribution that is
+            # visible in this window (see step_hist).
             rate = pass_rate(input_dir, method, process)
-            panel_label = label if rate is None else f"{label} ({rate:.2f})"
-            step_hist(a, data[process], panel_label, color, linestyle)
+            bits = [] if rate is None else [f"{rate:.2f}"]
+            bits.append(f"{window_area(data[process]) * 100:.0f}%")
+            step_hist(a, data[process], f"{label} ({' | '.join(bits)})",
+                      color, linestyle, normalize)
             drawn = True
         if not drawn:
             continue
@@ -210,6 +252,15 @@ def main(argv=None):
                    help="Default: <inputDir>/plots/mh_grids")
     p.add_argument("--sets", default="exponent,radius",
                    help="Which figure sets to draw: exponent, radius, or both")
+    p.add_argument("--normalize", choices=["full", "window"], default="full",
+                   help="full = keep mass_plots.py's unit area over the whole "
+                        "0-250 GeV histogram (so the visible area is <1 and "
+                        "differs per curve - the tail fraction is itself a real "
+                        "difference between algorithms); window = renormalize to "
+                        "unit area inside the plotted range, comparing shape only")
+    p.add_argument("--variant", choices=["plain", "er", "both"], default="both",
+                   help="plain = the bare radius scans, er = their "
+                        "energy-recovery counterparts, both = one set each")
     args = p.parse_args(argv)
     if not args.inputDir:
         raise SystemExit("set PATH_TO_HISTOGRAMS or pass --inputDir")
@@ -223,75 +274,85 @@ def main(argv=None):
         print(f"note: {REFERENCE_METHOD} has no {MASS_PKL_RELPATH}; "
               "the Durham reference curve will be omitted")
 
-    # Which (exponent, radius) combinations actually have a mass pickle.
-    available = {}
-    for e in EXPONENTS:
-        for radius in RADIUS_SCAN:
-            method = resolve_method(input_dir, e["family"], radius)
-            if method:
-                available[(e["p"], radius)] = method
-    if not available:
-        raise SystemExit(
-            f"no radius-scan method directory under {input_dir} has "
-            f"{MASS_PKL_RELPATH} yet - run mass_plots.py on them first")
-
-    print(f"found {len(available)} of {len(EXPONENTS) * len(RADIUS_SCAN)} "
-          "(exponent, radius) combinations with mass pickles:")
-    for e in EXPONENTS:
-        radii = [r for (pp, r) in sorted(available) if pp == e["p"]]
-        print(f"  p={fmt_p(e['p']):>2s} {e['label']:16s} R = "
-              + (", ".join(f"{r:.1f}" for r in radii) if radii else "(none)"))
-
+    variants = ["plain", "er"] if args.variant == "both" else [args.variant]
     os.makedirs(output_dir, exist_ok=True)
     written, all_dropped = [], []
 
-    # --- one figure per exponent: that exponent's radii, light -> dark ---------
-    if "exponent" in wanted:
+    for variant in variants:
+        family_field, suffix = VARIANTS[variant]
+        er_label = " + E-recovery" if variant == "er" else ""
+
+        # Which (exponent, radius) combinations of this variant have a mass pickle.
+        available = {}
+        for e in EXPONENTS:
+            for radius in RADIUS_SCAN:
+                method = resolve_method(input_dir, e[family_field], radius)
+                if method:
+                    available[(e["p"], radius)] = method
+
+        print(f"\n[{variant}] {len(available)} of "
+              f"{len(EXPONENTS) * len(RADIUS_SCAN)} (exponent, radius) "
+              "combinations have mass pickles:")
         for e in EXPONENTS:
             radii = [r for (pp, r) in sorted(available) if pp == e["p"]]
-            if not radii:
-                print(f"skipping per-exponent grid for p={fmt_p(e['p'])}: no radii present")
-                continue
-            shades = np.linspace(*e["cmap_range"], max(1, len(radii)))
-            curves = []
-            if have_reference:
-                curves.append((REFERENCE_METHOD, REFERENCE_LABEL, REFERENCE_COLOR, "-"))
-            for i, radius in enumerate(radii):
-                curves.append((available[(e["p"], radius)],
-                               f"{e['label']} R={radius:.1f}",
-                               rgba_to_hex(e["cmap"](shades[i])), "-"))
-            fig, ax = new_grid()
-            all_dropped += draw_panels(ax, curves, input_dir)
-            finish_grid(fig, ax,
-                        f"$m_H$ per process - {e['label']} radius scan "
-                        f"($p = {fmt_p(e['p'])}$), vs Durham")
-            path = os.path.join(output_dir, f"mH_grid_exponent_p{e['tag']}.pdf")
-            fig.savefig(path)
-            plt.close(fig)
-            written.append(path)
+            print(f"  p={fmt_p(e['p']):>2s} {e['label']:16s} R = "
+                  + (", ".join(f"{r:.1f}" for r in radii) if radii else "(none)"))
+        if not available:
+            print(f"  nothing to draw for the '{variant}' variant - skipping")
+            continue
 
-    # --- one figure per radius: the three exponents at that radius ------------
-    if "radius" in wanted:
-        for radius in RADIUS_SCAN:
-            present = [e for e in EXPONENTS if (e["p"], radius) in available]
-            if not present:
-                print(f"skipping per-radius grid for R={radius:.1f}: no exponents present")
-                continue
-            curves = []
-            if have_reference:
-                curves.append((REFERENCE_METHOD, REFERENCE_LABEL, REFERENCE_COLOR, "-"))
-            for e in present:
-                curves.append((available[(e["p"], radius)],
-                               f"{e['label']} ($p={fmt_p(e['p'])}$)", e["color"], "-"))
-            fig, ax = new_grid()
-            all_dropped += draw_panels(ax, curves, input_dir)
-            finish_grid(fig, ax,
-                        f"$m_H$ per process - the three exponents at "
-                        f"$R = {radius:.1f}$, vs Durham")
-            path = os.path.join(output_dir, f"mH_grid_radius_R{radius_to_str(radius)}.pdf")
-            fig.savefig(path)
-            plt.close(fig)
-            written.append(path)
+        # --- one figure per exponent: that exponent's radii, light -> dark ----
+        if "exponent" in wanted:
+            for e in EXPONENTS:
+                radii = [r for (pp, r) in sorted(available) if pp == e["p"]]
+                if not radii:
+                    print(f"  skipping per-exponent grid for p={fmt_p(e['p'])}: no radii")
+                    continue
+                shades = np.linspace(*e["cmap_range"], max(1, len(radii)))
+                curves = []
+                if have_reference:
+                    curves.append((REFERENCE_METHOD, REFERENCE_LABEL, REFERENCE_COLOR, "-"))
+                for i, radius in enumerate(radii):
+                    curves.append((available[(e["p"], radius)],
+                                   f"{e['label']} R={radius:.1f}{er_label}",
+                                   rgba_to_hex(e["cmap"](shades[i])), "-"))
+                fig, ax = new_grid()
+                all_dropped += draw_panels(ax, curves, input_dir, args.normalize)
+                finish_grid(fig, ax,
+                            f"$m_H$ per process - {e['label']}{er_label} radius "
+                            f"scan ($p = {fmt_p(e['p'])}$), vs Durham",
+                            args.normalize)
+                path = os.path.join(
+                    output_dir, f"mH_grid_exponent_p{e['tag']}{suffix}.pdf")
+                fig.savefig(path)
+                plt.close(fig)
+                written.append(path)
+
+        # --- one figure per radius: the three exponents at that radius --------
+        if "radius" in wanted:
+            for radius in RADIUS_SCAN:
+                present = [e for e in EXPONENTS if (e["p"], radius) in available]
+                if not present:
+                    print(f"  skipping per-radius grid for R={radius:.1f}: no exponents")
+                    continue
+                curves = []
+                if have_reference:
+                    curves.append((REFERENCE_METHOD, REFERENCE_LABEL, REFERENCE_COLOR, "-"))
+                for e in present:
+                    curves.append((available[(e["p"], radius)],
+                                   f"{e['label']} ($p={fmt_p(e['p'])}$){er_label}",
+                                   e["color"], "-"))
+                fig, ax = new_grid()
+                all_dropped += draw_panels(ax, curves, input_dir, args.normalize)
+                finish_grid(fig, ax,
+                            f"$m_H$ per process - the three exponents"
+                            f"{er_label} at $R = {radius:.1f}$, vs Durham",
+                            args.normalize)
+                path = os.path.join(
+                    output_dir, f"mH_grid_radius_R{radius_to_str(radius)}{suffix}.pdf")
+                fig.savefig(path)
+                plt.close(fig)
+                written.append(path)
 
     if all_dropped:
         print(f"\ndropped {len(all_dropped)} curve(s):")
