@@ -149,8 +149,18 @@ Not a clustering algorithm but a post-processing step applied to the inclusive
 C/A output: the $N$ leading jets are kept and every surplus jet is recombined
 into them, so the event ends with exactly $N$ jets
 (\texttt{ZHfunctions::energy\_recovery}, \texttt{src/histmaker\_functions/functions.h}).
-It exists to recover the energy that inclusive clustering leaves in extra jets.
-Method directories \texttt{PF\_E\_recovery\_EECambridgeR04}\,\dots
+It exists to recover the energy that inclusive clustering leaves in extra jets,
+and is available for all three exponents
+(\texttt{PF\_E\_recovery\_EECambridgeR*}, \texttt{PF\_E\_recovery\_EEKtR*},
+\texttt{PF\_E\_recovery\_EEAntiKtR*}).
+
+Because it acts only where the clustering overproduces, its size is governed by
+$N$. Measured at $R = 0.4$ on $Z(\to\nu\nu)H(\to qq)$ ($N = 2$) it moves the
+$m_H$ peak from $119.9$ to $124.9$~GeV, and makes the result independent of both
+the radius and the exponent --- the $N$ jets then contain every visible particle,
+so nothing is left for the jet definition to change. On the 6-jet light-flavour
+process at $R \ge 0.8$, by contrast, the clustering already yields $\le N$ jets
+and energy recovery is exactly the identity.
 
 \paragraph{CaloJets.}
 Not clustered in this framework at all: the jets are read from the

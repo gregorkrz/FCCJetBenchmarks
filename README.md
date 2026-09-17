@@ -10,9 +10,14 @@ Jet performance benchmark toolkit using the FCCAnalysis framework.
 
 ## Overview
 
-This toolkit provides a comprehensive benchmarking framework for evaluating jet reconstruction performance in $e^+e^-$ collisions at the Future Circular Collider (FCC). The analysis focuses on ZH production processes at $\sqrt{s} = 240$ GeV, comparing different jet clustering algorithms (Durham, and the generalized $e^+e^-$ anti-$k_T$, Cambridge/Aachen and $k_T$ radius scans) and reconstruction approaches (particle flow vs. calorimeter jets).
+This repository benchmarks jet reconstruction in $e^+e^-$ collisions at the FCC, using ZH production at
+$\sqrt{s} = 240$ GeV. It compares jet clustering algorithms (Durham, and the generalized $e^+e^-$
+anti-$k_T$, Cambridge/Aachen and $k_T$ radius scans) and reconstruction approaches (particle flow against
+calorimeter jets).
 
-The framework enables systematic evaluation of jet energy resolution, angular resolution, and reconstructed Higgs mass resolution across multiple physics processes with varying jet multiplicities (2, 4, and 6 jets). It supports both standard and ideal matching scenarios for truth-reconstruction comparisons.
+The metrics are jet energy resolution, angular resolution, and reconstructed Higgs mass, measured across
+11 processes with 2, 4 and 6 final-state jets. Truth matching is available in both the standard and the
+ideal variant.
 
 ## Dependencies
 
@@ -44,11 +49,16 @@ Settings → Secrets and variables → Actions.
 
 ## Quickstart
 
-0. **Set up the environment.** This repo uses the [FCCAnalyses framework](https://hep-fcc.github.io/FCCAnalyses/).
-The framework is packaged inside the Key4HEP software stack:
+0. **Set up the environment.** This repo uses the [FCCAnalyses framework](https://hep-fcc.github.io/FCCAnalyses/),
+packaged inside the Key4HEP software stack. Then source `env.sh`, which is what defines the dataset
+and histogram paths (`$PATH_TO_DATASET`, `$PATH_TO_HISTOGRAMS`, ...) that every command below uses:
 ```bash
 source /cvmfs/sw.hsf.org/key4hep/setup.sh -r 2025-05-29
+source env.sh
 ```
+
+`$PATH_TO_DATASET` points at `IDEA_20260902_seeded`; see [Dataset in use](#dataset-in-use).
+Key4HEP cannot be sourced on a RHEL 8 login node. Use the Singularity container (`shell.sh`) there.
 
 1. **Run the histmaker:**
 Submit the slurm jobs for each process and each method using the following command:
@@ -57,7 +67,21 @@ python scripts/generate_analysis_jobs.py --input $PATH_TO_DATASET --output $PATH
 ```
 
 Useful flags:
-- `--algos ALGO1,ALGO2,...` — comma-separated list of clustering-algorithm families to generate jobs for. Choices: `durham` (PF_Durham), `calo` (CaloJets_Durham), `ideal` (PF_Durham_IdealMatching), `ca` ($e^+e^-$ Cambridge/Aachen radius scan, `PF_EECambridgeR*`), `ca-er` (the same with energy recovery), `kt` ($e^+e^-$ $k_T$ radius scan, `PF_EEKtR*`), `akt` (genuine $e^+e^-$ anti-$k_T$ radius scan, `PF_EEAntiKtR*`) — i.e. ee_genkt exponent 0, +1 and −1. `ak`/`ak-er` are accepted as aliases for `ca`/`ca-er` (see the Correction note in the algorithms section), so `ak` is **not** an alias for `akt`. There is deliberately no `kt-er`. Defaults to `durham,calo,ideal,ca,ca-er,kt,akt` (all algos).
+- `--algos ALGO1,ALGO2,...` — which clustering-algorithm families to generate jobs for.
+  Defaults to all of them: `durham,calo,ideal,ca,ca-er,kt,kt-er,akt,akt-er`.
+
+  | key | algorithm | $p$ | method directories |
+  | --- | --- | --- | --- |
+  | `durham` | Durham, exclusive $N$ | | `PF_Durham` |
+  | `calo` | Durham on calo towers | | `CaloJets_Durham` |
+  | `ideal` | Durham, ideal matching | | `PF_Durham_IdealMatching` |
+  | `ca` / `ca-er` | $e^+e^-$ Cambridge/Aachen | 0 | `PF_EECambridgeR*` |
+  | `kt` / `kt-er` | $e^+e^-$ $k_T$ | $+1$ | `PF_EEKtR*` |
+  | `akt` / `akt-er` | $e^+e^-$ anti-$k_T$ | $-1$ | `PF_EEAntiKtR*` |
+
+  `-er` adds energy recovery. `ak` and `ak-er` are aliases for `ca` and `ca-er`, kept because the
+  historical "anti-kt" scan was in fact Cambridge/Aachen. So `ak` is **not** an alias for `akt`.
+  See the Correction note in the algorithms section.
 - `--logs PATH_TO_LOGS` — directory for SLURM stdout/stderr logs (default: `$PATH_TO_HISTOGRAMS/logs`).
 - `--no-submit` — write the SLURM job files but don't submit them with `sbatch`.
 - `--rerun-all` — submit all jobs, even those whose output ROOT file already exists (by default, jobs with an existing non-empty output file are skipped).
@@ -118,11 +142,34 @@ The following processes are simulated at $\sqrt{s} = 240$ GeV using Pythia8 and 
   | Z(→νν)H(→gg) (p8_ee_ZH_vvgg_ecm240)                        | 2                             |
   | Z(→νν)H(→qq) (p8_ee_ZH_vvqq_ecm240)                        | 2                             |
 
-Unless noted otherwise, q stands for all light quark flavours (u, d, s, c). The dataset contains 5.05 million
-samples for each process.
+Unless noted otherwise, q stands for all light quark flavours (u, d, s, c).
 
-The data are available at `/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20251114`
-(for access within SLAC S3DF) or provided upon request.
+### Dataset in use
+
+Everything in this repository is produced from the **properly seeded campaign**
+
+```
+/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260902_seeded
+```
+
+which `env.sh` exports as `$PATH_TO_DATASET`. It holds **3.0-3.1 million events per process**,
+33.6 M in total over 6714 files. Every job carries its own Pythia `Random:seed`, so the events are
+statistically independent. See [Random seeds](#random-seeds-important) below.
+
+| | events / process | files / process |
+| --- | --- | --- |
+| all 11 processes | 3.02 M - 3.14 M | 588 - 623 |
+
+A second campaign of the same size, with a disjoint seed range, sits at `$PATH_TO_DATASET_2`
+(`IDEA_20260903_seeded`). Merge the two to double the statistics.
+
+Available within SLAC S3DF, or on request.
+
+> [!WARNING]
+> Do not use the older trees under `.../jetbenchmarks/`: `IDEA_20251105`, `IDEA_20251114`,
+> `IDEA_20251205`, `IDEA_mod1_20251121`, `IDEA_20260120`. `IDEA_20260120` is exported as
+> `$PATH_TO_DATASET_OLD` and has the unseeded-Pythia defect described below. This README used to
+> point at `IDEA_20251114`, which no script reads.
 
 
 ### Dataset generation
@@ -259,17 +306,15 @@ than an input, and $R$ is scanned over `0.4, 0.6, 0.8, 1.0, 1.2, 1.4` (`RADIUS_S
 > directories are `PF_EEAntiKtR*` — note the `EE`, which distinguishes them from the
 > legacy `PF_AntiKtR*` C/A directories.
 
-Two properties of the distance measure are worth keeping in mind when reading the
-radius-scan figures:
+Two properties of the distance measure matter for reading the radius-scan figures:
 
-- The factor $1/(1-\cos R)$ is a global constant, so it never reorders the $d_{ij}$
-  among themselves. The **entire $R$ dependence enters through the $d_{ij}$ vs $d_{iB}$
-  comparison**, i.e. through which particles are split off into their own jet.
-- As $R \to \pi$ the beam term can no longer win and $p=+1$ degenerates into Durham
-  (FastJet's `JetDefinition.hh` notes "R > 2 and p=1 gives ee_kt"). Measured on
-  simulated 6-jet events, *exclusive*-to-$N$ clustering with $p=+1$ is already
-  bit-identical to Durham for $R \gtrsim 0.6$ — which is why the $k_T$ family is run
-  inclusively rather than exclusively.
+- $1/(1-\cos R)$ is a global constant and never reorders the $d_{ij}$ among themselves.
+  All $R$ dependence therefore enters through $d_{ij}$ against $d_{iB}$: which particles
+  are split off into their own jet.
+- As $R \to \pi$ the beam term can no longer win, and $p=+1$ becomes Durham. FastJet's
+  `JetDefinition.hh` says "R > 2 and p=1 gives ee_kt". On simulated 6-jet events,
+  exclusive-to-$N$ clustering with $p=+1$ is bit-identical to Durham for $R \gtrsim 0.6$.
+  That is why the $k_T$ family is run inclusively.
 
 Merging gets monotonically more aggressive with increasing $p$. Measured at $R=0.8$ in
 $Z(\to qq)H(\to WW\to qqqq)$ over 10k events:
@@ -311,9 +356,15 @@ The built PDFs are committed next to them ([`doc/jet_algorithms.pdf`](doc/jet_al
 Similar to https://indico.cern.ch/event/1439509/contributions/6289574/attachments/2997180/5280612/AEConnelly_FCC.pdf,
 the jets are sorted by energy and the expected number of jets with the highest energy is selected first.
 Each extra jet gets recombined with the closest of these jets. Applied to the inclusive
-C/A scan only: there is deliberately no `kt-er` family, because energy recovery on a
-collection that already has exactly $N$ jets is the identity
-(`ZHfunctions::energy_recovery`, `src/histmaker_functions/functions.h`).
+Available for all three exponents (`ca-er`, `kt-er`, `akt-er`).
+
+Energy recovery keeps the $N$ leading jets and merges the surplus into them. It therefore
+does nothing unless the clustering overproduces, and how much it does depends on $N$.
+
+At $R=0.4$ on $Z(\to\nu\nu)H(\to qq)$ ($N=2$) it moves the $m_H$ peak from 119.9 to 124.9 GeV.
+The result then no longer depends on the radius or the exponent, because the two jets hold every
+visible particle. On the 6-jet processes at $R \ge 0.8$ the clustering already yields $\le N$ jets,
+so energy recovery is the identity.
 
 ### Jet truth definition
 Gen jets are defined by clustering all final-state MC particles (excluding neutrinos) using the same jet algorithm
@@ -487,11 +538,10 @@ python src/plotting/mh_decomposition_plots.py --inputDir $PATH_TO_HISTOGRAMS
 
 * **Event displays for the tails of the $m_H$ "Physics" curve** (placed in `plots/event_displays`).
 
-  The decomposition's "Physics" curve is `h_mH_gen`: the Higgs mass from *gen* jets built out of stable gen
-  particles, i.e. with a perfect detector, so its width is entirely a jet-definition / jet-assignment effect.
-  For `p8_ee_ZH_6jet_LF_ecm240` it is strikingly asymmetric — about 1% of entries below 108 GeV but 5% above
-  160 GeV. These displays show 20 individual events from each of three windows (far below, at, and far above
-  the peak) so the tails can be inspected directly:
+  The "Physics" curve is `h_mH_gen`: the Higgs mass from gen jets built out of stable gen particles.
+  The detector is perfect there, so the width is a pure jet-definition and jet-assignment effect.
+  For `p8_ee_ZH_6jet_LF_ecm240` the curve is asymmetric: ~1% of entries below 108 GeV, ~5% above 160 GeV.
+  These displays show 20 events from each of three windows, far below, at, and far above the peak.
 
   ```bash
   source env.sh
@@ -500,24 +550,27 @@ python src/plotting/mh_decomposition_plots.py --inputDir $PATH_TO_HISTOGRAMS
   bash scripts/make_event_displays.sh --draw-only           # redraw from the existing payload
   ```
 
-  Two stages, because unlike every other plotting step this one reads the **dataset** and re-runs the
-  clustering: per-event four-vectors exist nowhere under `$PATH_TO_HISTOGRAMS`, which holds only TH1Ds.
-  Stage 1 (`src/event_displays.py`) needs the container (ROOT + FCCAnalyses) and reuses the *same* helpers as
-  `src/histmaker.py`, so the events drawn are exactly the events that fill `h_mH_gen`; it writes a small
-  pickle. Stage 2 (`src/plotting/event_display_plots.py`) is plain matplotlib, so iterating on the figure is
-  cheap.
+  Unlike every other plotting step, this one reads the **dataset** and re-runs the clustering.
+  `$PATH_TO_HISTOGRAMS` holds only TH1Ds, so per-event four-vectors exist nowhere in it.
 
-  Output is a single multi-page PDF: a cover page recording the windows and their yields, then one page per
-  event in the η–φ plane with particles coloured by PID and **marker area proportional to $p_T$**, the gen-jet
-  axes and the 90% $p_T$ core of each jet outlined (Durham has no radius and assigns every particle to some
-  jet, so the full constituent set would sprawl across the plane), the Higgs-matched jets badged `[H]`, the
-  hard Higgs partons as stars with a connector to the jet each matched, and a per-event annotation box
-  (all four $m_H$ definitions, the per-jet table, the parton→jet assignment with each ΔR, and the
-  invisible / out-of-acceptance energy).
+  Stage 1 (`src/event_displays.py`) needs the container. It reuses the same helpers as
+  `src/histmaker.py`, so the events drawn are the events that fill `h_mH_gen`, and writes a small pickle.
+  Stage 2 (`src/plotting/event_display_plots.py`) is plain matplotlib, so redrawing is cheap.
 
-  Stage 1 asserts per event that the summed constituent momenta reproduce each jet's momentum and that
-  $m_H$ recomputed from the Higgs-matched jets equals `inv_mass_gen`; it aborts rather than warning, since
-  a broken constituent→jet mapping would silently attribute particles to the wrong jets. Useful flags:
+  The output is one multi-page PDF. A cover page records the windows and their yields. Each event then gets
+  a page in the η–φ plane:
+
+  - particles coloured by PID, **marker area proportional to $p_T$**
+  - gen-jet axes, with the 90% $p_T$ core of each jet outlined. Durham has no radius and assigns every
+    particle to some jet, so the full constituent set would sprawl across the plane.
+  - Higgs-matched jets badged `[H]`; the hard Higgs partons as stars, joined to the jet each matched
+  - an annotation box: all four $m_H$ definitions, the per-jet table, the parton→jet assignment with each
+    ΔR, and the invisible and out-of-acceptance energy
+
+  Stage 1 checks two things per event: that the summed constituent momenta reproduce each jet's momentum,
+  and that $m_H$ recomputed from the Higgs-matched jets equals `inv_mass_gen`. It aborts on failure rather
+  than warning, because a broken constituent→jet mapping would attribute particles to the wrong jets
+  silently. Useful flags:
   `--windows auto` (derive the windows from the histogram instead of the measured defaults),
   `--window LABEL LOW HIGH` (repeatable), `--n-per-window`, `--max-files`, `--select`, `--process`.
 
@@ -556,19 +609,29 @@ python src/plotting/mh_grid_plots.py --inputDir $PATH_TO_HISTOGRAMS --sets expon
 python src/plotting/mh_grid_plots.py --inputDir $PATH_TO_HISTOGRAMS --sets radius
 ```
 
-  This exists separately from `joint_plots.py` for two reasons. It reads *only*
-  `plots_mass/Higgs_mass_histograms_data.pkl`, so it needs `mass_plots.py` to have run but neither of the
-  two much slower resolution stages (`extract_resolution_data.py` + `resolution_plots.py`) — it can
-  therefore be run as soon as the mass step finishes. And the per-radius, cross-family overlay is not
-  expressible in `joint_plots.py`, whose `--family` mode draws one family at a time.
+  Add `--variant er` for the energy-recovery counterparts, or `--variant both` for one set each.
 
-  Every legend entry carries that method's fully-matched-jets filter pass rate *for that process* in
-  brackets, e.g. `ee-kT R=0.8 (0.61)`, so a curve resting on a few percent of the events is visibly
-  flagged rather than looking like a result. For the same reason the 6-jet panels omit radii above
-  `MAX_RADIUS_FOR_6JETS` (1.0): with inclusive clustering a 6-jet event merges into fewer jets as $R$
-  grows, so the filter keeps ~1% of events at $R=1.2$ and essentially none at $R=1.4$. Every dropped
-  curve is printed on stdout rather than being silently omitted, as are the (exponent, radius)
-  combinations that have no mass pickle yet.
+  This is separate from `joint_plots.py` for two reasons. It reads only
+  `plots_mass/Higgs_mass_histograms_data.pkl`, so it needs `mass_plots.py` but not the two slower
+  resolution stages, and can run as soon as the mass step finishes. And `joint_plots.py --family`
+  draws one family at a time, so it cannot produce the per-radius overlay across families.
+
+  **Normalization.** `mass_plots.py` stores these curves as a density with unit area over the full
+  0-250 GeV histogram, not over the 90-150 GeV window that is plotted. The visible area is therefore
+  below 1 and differs between curves. In the 6-jet panels it runs from ~91% (Durham) down to ~72%
+  (anti-$k_T$ at $R=0.8$), which scales Durham up by ~1.25x relative to the scan curves. Pass
+  `--normalize window` to divide that out and compare shape alone. The default keeps the full-range
+  normalization, because the tail fraction is itself a real difference between algorithms.
+
+  Each legend entry reads `label (pass rate | % inside window)`, for example
+  `ee-kT (p=+1) (0.60 | 77%)`. The first number is the fully-matched-jets filter pass rate for that
+  process; the second is how much of the curve is visible. A curve resting on a few percent of the
+  events is then flagged rather than looking like a result.
+
+  The 6-jet panels omit radii above `MAX_RADIUS_FOR_6JETS` (1.0). With inclusive clustering a 6-jet
+  event merges into fewer jets as $R$ grows, so the filter keeps ~1% of events at $R=1.2$ and
+  essentially none at $R=1.4$. Dropped curves and missing (exponent, radius) combinations are printed
+  on stdout, never silently omitted.
 
 * **Interactive dashboard**. Once `extract_resolution_data.py` + `resolution_plots.py` + `mass_plots.py` have been
   run for every method subfolder and `print_basic_stats.py --all-folders` has been run once, consolidate all their

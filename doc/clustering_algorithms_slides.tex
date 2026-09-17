@@ -275,11 +275,15 @@
     (\texttt{ZHfunctions::energy\_recovery},
     \texttt{src/histmaker\_functions/functions.h}). The $N$ leading jets are
     kept and every surplus jet is recombined into them, so the event ends with
-    exactly $N$ jets. Applied to the \Cca{C/A} scan only.
+    exactly $N$ jets. Available for all three exponents.
 
     \smallskip
-    There is deliberately no $k_T$ equivalent: energy recovery on a collection
-    that already has exactly $N$ jets is the identity.
+    It acts only where the clustering overproduces, so its size is governed by
+    $N$. At $R = 0.4$ on $Z(\to\nu\nu)H(\to qq)$ ($N = 2$) it moves the $m_H$
+    peak from $119.9$ to $124.9$~GeV and renders the result independent of both
+    radius and exponent, the $N$ jets then holding every visible particle. On
+    the 6-jet light-flavour process at $R \ge 0.8$ the clustering already yields
+    $\le N$ jets and energy recovery is the identity.
   \end{block}
 \end{frame}
 
