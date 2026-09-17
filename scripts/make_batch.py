@@ -64,8 +64,13 @@ def output_root_of(slurm_path):
     process = re.search(r"--only-dataset\s+(\S+)", text)
     if not out or not process:
         raise ValueError(f"could not read --output/--only-dataset from {slurm_path}")
-    return os.path.join(HIST, os.path.basename(out.group(1).rstrip("/")),
-                        process.group(1) + ".root")
+    # The histmaker command sits inside `/bin/sh -c '...'`, and --only-dataset is
+    # its last token, so a bare \S+ swallows the closing shell quote. Strip any
+    # quoting before using these as path components: getting this wrong makes
+    # every run look missing and silently re-packs the whole campaign.
+    method_dir = os.path.basename(out.group(1).strip("'\"").rstrip("/"))
+    process_name = process.group(1).strip("'\"")
+    return os.path.join(HIST, method_dir, process_name + ".root")
 
 
 def missing_jobs():
