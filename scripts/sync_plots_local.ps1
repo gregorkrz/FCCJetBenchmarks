@@ -17,6 +17,11 @@
 # Everything comes over a single ssh connection: the remote side stages the
 # files under the names we want and streams one tar, which Windows' built-in
 # tar.exe unpacks. Otherwise password auth would prompt once per file.
+#
+# The tar is base64-encoded in transit. PowerShell pipelines carry text, not
+# bytes: piping ssh's raw stdout into a file corrupts it, and the symptom is a
+# truncated archive that unpacks to the three directories and no files.
+# Base64 costs 33% on an 8 MB transfer and is exact.
 
 param(
     [string]$SshHost = "s3dflogin.slac.stanford.edu",
@@ -31,7 +36,7 @@ New-Item -ItemType Directory -Force -Path $Dest | Out-Null
 $DestFull = (Resolve-Path $Dest).Path
 
 # Single-quoted here-string: PowerShell must not expand $D, $m and friends.
-# Only $Remote and $Repo are substituted, on the two lines below.
+# Only $Remote and $Repo are substituted, on the line below.
 $remoteScript = @'
 set -eu
 D=$(mktemp -d)
@@ -46,13 +51,12 @@ for m in EEAntiKtR08 EEAntiKtR14 EECambridgeR08 EECambridgeR14 EEKtR08 EEKtR14; 
     [ -f "$src" ] && cp "$src" "$D/decomposition/PDP_$m$v.pdf"
   done
 done
-tar cf - -C "$D" .
+echo "STAGED $(find "$D" -name '*.pdf' | wc -l)" >&2
+tar cf - -C "$D" . | base64
 '@ -replace '__REMOTE__', $Remote -replace '__REPO__', $Repo
 
-$tarPath = Join-Path $env:TEMP "fcc_plots.tar"
 Write-Host "Connecting to $SshHost (one password prompt)..." -ForegroundColor Cyan
 
-# Write the tar to a file rather than piping: PowerShell pipelines mangle binary.
 # Pin one auth method: ssh otherwise offers every key it can find and the
 # server drops the connection after about six attempts.
 $key = Join-Path $env:USERPROFILE ".ssh\s3df\id_ed25519"
@@ -62,13 +66,25 @@ if (Test-Path $key) {
     $sshArgs = @("-o", "PubkeyAuthentication=no",
                  "-o", "PreferredAuthentications=keyboard-interactive,password")
 }
-$remoteScript | & ssh @sshArgs "$User@$SshHost" "bash -s" | Set-Content -Path $tarPath -Encoding Byte
+
+$lines = $remoteScript | & ssh @sshArgs "$User@$SshHost" "bash -s"
 if ($LASTEXITCODE -ne 0) { throw "ssh failed with exit code $LASTEXITCODE" }
 
+# A login banner printed on stdout would sit in front of the payload, so keep
+# only lines that are pure base64.
+$b64 = ($lines | Where-Object { $_ -match '^[A-Za-z0-9+/=]+$' }) -join ''
+if ($b64.Length -lt 1000) { throw "no archive came back (got $($b64.Length) base64 chars)" }
+
+$tarPath = Join-Path $env:TEMP "fcc_plots.tar"
+[IO.File]::WriteAllBytes($tarPath, [Convert]::FromBase64String($b64))
+Write-Host ("Received {0:N1} MB." -f ((Get-Item $tarPath).Length / 1MB))
+
 & tar -xf $tarPath -C $DestFull
+if ($LASTEXITCODE -ne 0) { throw "tar failed with exit code $LASTEXITCODE" }
 Remove-Item $tarPath -Force
 
 $n = (Get-ChildItem -Path $DestFull -Recurse -Filter *.pdf).Count
+if ($n -eq 0) { throw "archive unpacked but contains no PDFs" }
 Write-Host ""
 Write-Host "Downloaded $n PDFs into $DestFull :" -ForegroundColor Green
 Write-Host "  mh_grids\mH_grid_radius_R{04..14}[_Erecovery].pdf       three exponents at fixed R"

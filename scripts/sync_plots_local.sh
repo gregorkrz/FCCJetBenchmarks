@@ -58,8 +58,16 @@ done
 tar cf - -C "$D" .
 REMOTE_SCRIPT
 
+n=$(find "$DEST" -name '*.pdf' | wc -l)
+if [[ "$n" -eq 0 ]]; then
+    echo "The archive unpacked to empty directories: the tar stream was truncated." >&2
+    echo "This happens when the shell does not pass binary through unchanged." >&2
+    echo "Use scripts/sync_plots_local.ps1 from PowerShell instead." >&2
+    exit 1
+fi
+
 echo
-echo "Downloaded $(find "$DEST" -name '*.pdf' | wc -l) PDFs into $DEST:"
+echo "Downloaded $n PDFs into $DEST:"
 echo "  mh_grids/mH_grid_radius_R{04..14}[_Erecovery].pdf       three exponents at fixed R"
 echo "  mh_grids/mH_grid_exponent_p{m1,0,pp1}[_Erecovery].pdf   six radii at fixed exponent"
 echo "  decomposition/PDP_<algo>R<rr>[_by_jets][_wide_log].pdf  Physics | Detector | Detector+Physics"
