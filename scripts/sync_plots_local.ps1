@@ -53,7 +53,16 @@ $tarPath = Join-Path $env:TEMP "fcc_plots.tar"
 Write-Host "Connecting to $SshHost (one password prompt)..." -ForegroundColor Cyan
 
 # Write the tar to a file rather than piping: PowerShell pipelines mangle binary.
-$remoteScript | & ssh "$User@$SshHost" "bash -s" | Set-Content -Path $tarPath -Encoding Byte
+# Pin one auth method: ssh otherwise offers every key it can find and the
+# server drops the connection after about six attempts.
+$key = Join-Path $env:USERPROFILE ".ssh\s3df\id_ed25519"
+if (Test-Path $key) {
+    $sshArgs = @("-i", $key, "-o", "IdentitiesOnly=yes")
+} else {
+    $sshArgs = @("-o", "PubkeyAuthentication=no",
+                 "-o", "PreferredAuthentications=keyboard-interactive,password")
+}
+$remoteScript | & ssh @sshArgs "$User@$SshHost" "bash -s" | Set-Content -Path $tarPath -Encoding Byte
 if ($LASTEXITCODE -ne 0) { throw "ssh failed with exit code $LASTEXITCODE" }
 
 & tar -xf $tarPath -C $DestFull

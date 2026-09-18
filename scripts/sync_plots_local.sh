@@ -24,9 +24,21 @@ DEST=${DEST:-./fcc_plots}
 
 mkdir -p "$DEST"
 
+# ssh offers every key it can find before falling back to a password, and the
+# server drops the connection after about six attempts ("Too many
+# authentication failures"). So pin exactly one method: the S3DF key if it is
+# there, otherwise password only with key offering switched off.
+if [[ -z "${SSH_OPTS:-}" ]]; then
+    if [[ -f "$HOME/.ssh/s3df/id_ed25519" ]]; then
+        SSH_OPTS="-i $HOME/.ssh/s3df/id_ed25519 -o IdentitiesOnly=yes"
+    else
+        SSH_OPTS="-o PubkeyAuthentication=no -o PreferredAuthentications=keyboard-interactive,password"
+    fi
+fi
+
 # The decomposition figure has the same filename in every method directory, so
 # the remote side renames each copy to carry the method before taring.
-ssh "$HOST" REMOTE="$REMOTE" REPO="$REPO" bash -s <<'REMOTE_SCRIPT' | tar xf - -C "$DEST"
+ssh $SSH_OPTS "$HOST" REMOTE="$REMOTE" REPO="$REPO" bash -s <<'REMOTE_SCRIPT' | tar xf - -C "$DEST"
 set -eu
 D=$(mktemp -d)
 trap 'rm -rf "$D"' EXIT
