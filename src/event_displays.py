@@ -211,6 +211,26 @@ def check_event(event, index, n_jets, label):
                 "attribute particles to the wrong jets."
             )
 
+    # The Higgs partons are status-23 quarks, so they must all reappear in the
+    # all-hard-parton block; the simple display relies on the slot mapping to
+    # tell the H partons (down triangles) from the Z ones (up triangles).
+    slot = np.asarray(event["hardparton_higgs_slot"], dtype=int)
+    n_higgs = len(event["parton_pdg"])
+    assert sorted(slot[slot >= 0].tolist()) == list(range(n_higgs)), (
+        f"{where}: hard partons map to Higgs slots {sorted(slot[slot >= 0])}, "
+        f"expected each of 0..{n_higgs - 1} exactly once"
+    )
+    for k, s in enumerate(slot):
+        if s >= 0:
+            assert event["hardparton_pdg"][k] == event["parton_pdg"][s], (
+                f"{where}: hard parton {k} has PDG {event['hardparton_pdg'][k]} "
+                f"but Higgs parton {s} has {event['parton_pdg'][s]}"
+            )
+            assert abs(event["hardparton_eta"][k] - event["parton_eta"][s]) < 1e-4, (
+                f"{where}: hard parton {k} and Higgs parton {s} are not the same "
+                "particle; subset_position matched the wrong index"
+            )
+
     higgs = [j for j in event["parton_to_jet"] if j >= 0]
     if len(higgs) == len(event["parton_to_jet"]):
         e = sum(float(event["jet_energy"][j]) for j in higgs)
@@ -336,8 +356,9 @@ def main(argv=None):
 
     if args.draw:
         from src.plotting.event_display_plots import draw_payload
-        pdf = os.path.splitext(output)[0] + ".pdf"
-        draw_payload(payload, pdf)
+        stem = os.path.splitext(output)[0]
+        draw_payload(payload, stem + ".pdf")
+        draw_payload(payload, stem + "_simple.pdf", style="simple")
     return 0
 
 

@@ -437,35 +437,6 @@ def definitions_text(method_dirs, reco_hist, keys, variants=VARIANTS):
     return "\n".join(lines)
 
 
-def annotate_grid_arrows(fig, transposed=False):
-    """Guide arrows for the process grid, labelled to match the actual layout.
-
-    Default layout: rows = jet multiplicity, columns = flavour. Transposed:
-    columns = jet multiplicity, rows = flavour.
-    (`presentation_jer_plots.annotate_matrix_plot_with_arrows()` hardcodes the
-    transposed labels, which is why the JER "full plots" grids - built on
-    `PROCESS_TO_ROW_COL`, i.e. the default layout - carry swapped ones.)
-    """
-    down_label = ("More B-hadron content" if transposed
-                  else "Higher number of final-state jets")
-    across_label = ("Higher number of final-state jets" if transposed
-                    else "More B-hadron content")
-    ax = fig.add_axes([0, 0, 1, 1], frameon=False)
-    ax.set_axis_off()
-    ax.annotate("", xy=(0.008, 0.02), xycoords="figure fraction",
-                xytext=(0.008, 0.955), textcoords="figure fraction",
-                arrowprops=dict(arrowstyle="->", lw=1.2, color="gray"))
-    ax.text(0.0038, 0.5, down_label,
-            transform=ax.transAxes, rotation=90, ha="center", va="center",
-            fontsize=10)
-    ax.annotate("", xy=(0.55, 0.996), xycoords="figure fraction",
-                xytext=(0.03, 0.996), textcoords="figure fraction",
-                arrowprops=dict(arrowstyle="->", lw=1.2, color="gray"))
-    # Label below the arrow line: above it there is no room left on the canvas.
-    ax.text(0.29, 0.991, across_label, transform=ax.transAxes,
-            ha="center", va="top", fontsize=10)
-
-
 def packed_layout(data):
     """process -> (row, col), rows filled from the left with no gaps.
 
@@ -488,10 +459,10 @@ def packed_layout(data):
 
 
 def fig_grid(data, keys, method_dirs, reco_hist, x_range, log_y, all_variants=VARIANTS,
-             transposed=False, arrows=True, jets_rows=None, only_processes=None,
+             transposed=False, jets_rows=None, only_processes=None,
              jet_badge=False, figsize=None):
-    """arrows=False drops the two grey guide arrows and the margin they need, so
-    the panels run to the edge of the canvas - the version to drop on a poster.
+    """The panels run to the edge of the canvas: no guide arrows are drawn, and
+    the layout therefore reserves no margin for their labels.
     jets_rows overrides which rows of JETS_IN_COLUMNS are drawn (transposed only);
     only_processes restricts the grid to a subset of processes (either layout).
     figsize overrides the canvas size (default: 4.0 x 3.4 in per panel).
@@ -580,20 +551,14 @@ def fig_grid(data, keys, method_dirs, reco_hist, x_range, log_y, all_variants=VA
     handles = [Line2D([], [], color=v["color"], linestyle=v["linestyle"],
                       lw=max(v.get("lw", 1.3), 2.0), label=v["label"])
                for v in variants]
-    if arrows:
-        fig.tight_layout(rect=(0.022, 0, 1, 0.915))
-        legend_y = 0.955
-    else:
-        # No arrow labels to clear: only the legend strip is reserved.
-        legend_top = 1.0 - 0.55 / (3.4 * rows)
-        fig.tight_layout(rect=(0, 0, 1, legend_top))
-        legend_y = 1.0
+    # Only the legend strip is reserved at the top; there are no guide-arrow
+    # labels to leave room for.
+    legend_top = 1.0 - 0.55 / (3.4 * rows)
+    fig.tight_layout(rect=(0, 0, 1, legend_top))
     fig.legend(handles=handles, loc="upper center",
                ncol=len(handles) if cols >= 4 else 3,
-               bbox_to_anchor=(0.5, legend_y), fontsize=11, frameon=True,
+               bbox_to_anchor=(0.5, 1.0), fontsize=11, frameon=True,
                framealpha=0.95, handlelength=2.2, columnspacing=2.0, borderpad=0.6)
-    if arrows:
-        annotate_grid_arrows(fig, transposed=transposed)
     return fig
 
 
@@ -1101,7 +1066,7 @@ def main():
     ):
         fig = fig_grid(data, GENPHYS_LADDERS["mH_decomposition_genphys"], method_dirs,
                        args.reco_hist, tuple(args.zoom_range), False,
-                       all_variants=VARIANTS_GENPHYS, arrows=False,
+                       all_variants=VARIANTS_GENPHYS,
                        jet_badge=True, **kwargs)
         fig.savefig(os.path.join(output_dir, poster_name))
         plt.close(fig)

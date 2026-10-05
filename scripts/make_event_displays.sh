@@ -24,8 +24,11 @@ KEY4HEP="${KEY4HEP:-/cvmfs/sw.hsf.org/key4hep/setup.sh}"
 KEY4HEP_RELEASE="${KEY4HEP_RELEASE:-2025-05-29}"
 
 PROCESS="${PROCESS:-p8_ee_ZH_6jet_LF_ecm240}"
-N_PER_WINDOW="${N_PER_WINDOW:-20}"
-MAX_FILES="${MAX_FILES:-2}"
+# 5 events per window is enough to read the tails, and one input file (5000
+# events) holds well over that in even the thinnest window. Stage 1's cost is
+# the event loop, so MAX_FILES is what makes a re-run slow, not N_PER_WINDOW.
+N_PER_WINDOW="${N_PER_WINDOW:-5}"
+MAX_FILES="${MAX_FILES:-1}"
 
 DO_DUMP=true
 DO_DRAW=true
@@ -42,6 +45,7 @@ done
 OUT_DIR="$PATH_TO_HISTOGRAMS/plots/event_displays"
 PAYLOAD="$OUT_DIR/${PROCESS}_payload.pkl"
 PDF="$OUT_DIR/${PROCESS}_event_displays.pdf"
+PDF_SIMPLE="$OUT_DIR/${PROCESS}_event_displays_simple.pdf"
 mkdir -p "$OUT_DIR"
 
 if [[ "$DO_DUMP" == true ]]; then
@@ -58,8 +62,13 @@ if [[ "$DO_DUMP" == true ]]; then
 fi
 
 if [[ "$DO_DRAW" == true ]]; then
-    echo "== stage 2: drawing the multi-page PDF =="
+    echo "== stage 2: drawing the multi-page PDFs =="
+    # The full display, and the stripped-down one (circles coloured by jet,
+    # triangles for the hard partons).
     python src/plotting/event_display_plots.py --payload "$PAYLOAD" --output "$PDF"
+    python src/plotting/event_display_plots.py --payload "$PAYLOAD" \
+        --style simple --output "$PDF_SIMPLE"
     echo
     echo "Open: $PDF"
+    echo "      $PDF_SIMPLE"
 fi

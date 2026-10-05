@@ -99,4 +99,5 @@ echo "  mh_grids/mH_grid_radius_R{04..14}[_Erecovery].pdf       three exponents 
 echo "  mh_grids/mH_grid_exponent_p{m1,0,pp1}[_Erecovery].pdf   six radii at fixed exponent"
 echo "  decomposition/PDP_<algo>R<rr>[_by_jets][_wide_log].pdf  Physics | Detector | Detector+Physics"
 echo "  event_displays/<process>_event_displays.pdf             per-event eta-phi displays"
+echo "  event_displays/<process>_event_displays_simple.pdf      the same, particles coloured by jet"
 echo "  jet_algorithms.pdf, clustering_algorithms_slides.pdf"

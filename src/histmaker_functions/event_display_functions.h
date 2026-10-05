@@ -90,6 +90,39 @@ parton_pdgs(const ROOT::VecOps::RVec<edm4hep::MCParticleData> &particles,
   return out;
 }
 
+// labels[indices[i]] for every i, with -1 where the index is out of range.
+// Used to carry the Higgs provenance of each displayed particle: `labels` is
+// gt_labels (per Particle, -1 = not descended from a Higgs parton, otherwise
+// which parton) and `indices` is stable_gen_particles_idx, which maps the
+// displayed collection back onto Particle.
+ROOT::VecOps::RVec<int> gather_labels(const std::vector<int> &labels,
+                                      const std::vector<int> &indices) {
+  ROOT::VecOps::RVec<int> out;
+  for (int idx : indices) {
+    out.push_back((idx >= 0 && idx < static_cast<int>(labels.size()))
+                      ? labels[idx]
+                      : -1);
+  }
+  return out;
+}
+
+// Position of each entry of `indices` within `subset`, or -1 if absent.
+// Used to tag which of the hard partons (MC_quark_idx, every status-23 quark or
+// gluon) came from the Higgs (MC_part_idx). The position, not just a flag,
+// because everything else the display knows about the Higgs partons -
+// parton_to_jet above all - is indexed by MC_part_idx order, which need not be
+// the MC-record order MC_quark_idx follows.
+ROOT::VecOps::RVec<int> subset_position(const std::vector<int> &indices,
+                                        const std::vector<int> &subset) {
+  ROOT::VecOps::RVec<int> out;
+  for (int idx : indices) {
+    const auto it = std::find(subset.begin(), subset.end(), idx);
+    out.push_back(it == subset.end() ? -1
+                                     : static_cast<int>(it - subset.begin()));
+  }
+  return out;
+}
+
 // Total energy of the stable neutrinos of an event. stable_particles() drops
 // them (particle_filter.py passes neutrino_filter=true), so the invisible
 // energy has to be recovered from the MC record for the annotation box.

@@ -3,15 +3,24 @@
 Reads the payload written by src/event_displays.py. Pure numpy + matplotlib, so
 it runs on the login node and can be iterated on without re-clustering.
 
-One page per event:
+Two styles, one page per event either way (--style):
+
+`detailed` (the default) shows everything:
   - stable gen particles, coloured by PID group, marker *area* proportional to pT
   - the gen jets: axis marker, a convex hull around each jet's constituents, and
     a label; the jets matched to a Higgs parton are marked
   - the hard Higgs partons, with a connector to the jet each matched to
   - an annotation box with the mH values, the per-jet table and the invisible energy
 
+`simple` keeps only the jet-assignment story:
+  - every stable gen particle as a circle, area proportional to pT, coloured by
+    the gen jet it was clustered into
+  - the hard partons as triangles: down-pointing from the Higgs, up-pointing
+    otherwise (the Z decay quarks)
+
 Usage:
     python src/plotting/event_display_plots.py --payload <payload.pkl>
+    python src/plotting/event_display_plots.py --payload <payload.pkl> --style simple
 """
 import argparse
 import os
@@ -39,6 +48,9 @@ ETA_ACCEPTANCE = 2.56
 # 50 GeV particle does not swamp the panel. Shared across all pages.
 AREA_PER_GEV = 25.0
 AREA_MIN, AREA_MAX = 4.0, 1200.0
+# Floor for the misclustering flags of the simple style only; the area is still
+# proportional to pT above it.
+FLAG_AREA_MIN = 30.0
 PT_LEGEND_VALUES = (0.5, 2.0, 10.0, 40.0)
 
 # Durham clustering has no radius: it assigns *every* particle to one of the N
@@ -230,7 +242,7 @@ def draw_event(event, meta, window, page_index, groups):
         ax.scatter(parton_eta, parton_phi, s=200, marker=(5, 2),
                    color="0.05", linewidths=1.1, zorder=7)
     for k in range(len(parton_eta)):
-        ax.annotate(pdg_name(parton_pdg[k]), (parton_eta[k], parton_phi[k]),
+        ax.annotate(pdg_name(parton_pdg[k], math=True), (parton_eta[k], parton_phi[k]),
                     textcoords="offset points", xytext=(6, -11), fontsize=7,
                     color="0.05", zorder=7)
         j = int(parton_jet[k])
@@ -295,16 +307,206 @@ def draw_event(event, meta, window, page_index, groups):
     return fig
 
 
+# tab10 without its grey, which is reserved for particles in no kept jet.
+JET_PALETTE = [plt.cm.tab10(i) for i in (0, 1, 2, 3, 4, 5, 6, 8, 9)]
+NO_JET_COLOR = (0.65, 0.65, 0.65, 1.0)
+
+
+def jet_colors(n_jets):
+    """One colour per gen jet, used as the face colour in the simple style."""
+    return [JET_PALETTE[j % len(JET_PALETTE)] for j in range(max(1, n_jets))]
+
+
+def hard_partons(event):
+    """(eta, phi, pdg, from_higgs, to_jet) for every hard parton of the event.
+
+    Payloads written before the `hardparton_*` block existed only carry the
+    Higgs partons, so fall back to those rather than refusing to draw.
+    """
+    if "hardparton_eta" in event:
+        eta = np.asarray(event["hardparton_eta"], dtype=float)
+        phi = np.asarray(event["hardparton_phi"], dtype=float)
+        pdg = np.asarray(event["hardparton_pdg"], dtype=int)
+        slot = np.asarray(event["hardparton_higgs_slot"], dtype=int)
+    else:
+        eta = np.asarray(event["parton_eta"], dtype=float)
+        phi = np.asarray(event["parton_phi"], dtype=float)
+        pdg = np.asarray(event["parton_pdg"], dtype=int)
+        slot = np.arange(len(eta))
+    # Only the Higgs partons are matched to a jet (HardP_to_GenJet_mapping), and
+    # that mapping is indexed by the `parton_*` block, i.e. by the slot.
+    parton_to_jet = np.asarray(event["parton_to_jet"], dtype=int)
+    to_jet = np.array([parton_to_jet[s] if 0 <= s < len(parton_to_jet) else -1
+                       for s in slot], dtype=int)
+    return eta, phi, pdg, slot >= 0, to_jet
+
+
+def misclustering(event, higgs_jets, n_jets):
+    """Per-particle marker: "o" normally, else which way the H/Z split failed.
+
+    A gen jet is a "Higgs jet" when a Higgs parton matched to it, and that set
+    of jets is what mH is summed over. So two things cost mH, and the display
+    marks both:
+      "s"  the particle does not descend from a Higgs parton but landed in a
+           Higgs jet - contamination, mH too high
+      "X"  it does descend from one but landed outside the Higgs jets -
+           leakage, mH too low
+    Payloads without the provenance column get all-round markers.
+    """
+    assign = np.asarray(event["part_jet_index"], dtype=int)
+    if "part_higgs_label" not in event:
+        return np.full(len(assign), "o", dtype="<U1")
+    from_higgs = np.asarray(event["part_higgs_label"], dtype=int) >= 0
+    in_higgs_jet = np.isin(assign, higgs_jets) if higgs_jets else \
+        np.zeros(len(assign), dtype=bool)
+    kind = np.full(len(assign), "o", dtype="<U1")
+    kind[~from_higgs & in_higgs_jet] = "s"
+    kind[from_higgs & ~in_higgs_jet] = "X"
+    return kind
+
+
+def mh_box_text(event):
+    """The three rungs of the mH decomposition, for the box next to the plot.
+
+    -1 is how the histmaker flags "the Higgs jets were not found", so it is
+    printed as such rather than as a mass.
+    """
+    rows = [("Physics", "mH_gen"),
+            ("Detector", "mH_detector"),
+            ("Detector + Physics", "mH_det_phys")]
+    lines = []
+    for label, key in rows:
+        value = float(event[key]) if key in event else float("nan")
+        shown = f"{value:7.2f} GeV" if value > 0 else "  undefined"
+        lines.append(f"$m_H$ {label:<19s}{shown}")
+    return "\n".join(lines)
+
+
+def draw_event_simple(event, meta, window, page_index):
+    """The stripped-down page: circles coloured by jet, triangles for partons.
+
+    Deliberately bare: no title, and nothing in the right-hand column but the
+    box of mH values. What the colours and shapes mean is on the cover page.
+    """
+    fig = plt.figure(figsize=(11.7, 8.3))
+    grid = fig.add_gridspec(1, 2, width_ratios=[3.4, 1], wspace=0.04,
+                            left=0.06, right=0.99, top=0.95, bottom=0.08)
+    ax = fig.add_subplot(grid[0, 0])
+    side = fig.add_subplot(grid[0, 1])
+    side.axis("off")
+
+    eta = np.asarray(event["part_eta"], dtype=float)
+    phi = np.asarray(event["part_phi"], dtype=float)
+    pt = np.asarray(event["part_pt"], dtype=float)
+    assign = np.asarray(event["part_jet_index"], dtype=int)
+    n_jets = min(meta["n_jets"], len(event["jet_eta"]))
+    colors = jet_colors(n_jets)
+
+    for edge in (-ETA_ACCEPTANCE, ETA_ACCEPTANCE):
+        ax.axvline(edge, color="0.6", lw=0.7, ls=(0, (3, 3)), zorder=0)
+
+    # --- particles: area = pT, face colour = jet, no distinction by PID. Round
+    # unless the particle sits on the wrong side of the H / Z split, in which
+    # case the shape says which way it went wrong (see misclustering()).
+    higgs_jets = [int(j) for j in event["parton_to_jet"] if int(j) >= 0]
+    kind = misclustering(event, higgs_jets, n_jets)
+    order = np.argsort(-pt)  # hard particles last, so they are never buried
+    for marker, lw in (("o", 0.4), ("s", 1.0), ("X", 1.0)):
+        sel = order[kind[order] == marker]
+        if not len(sel):
+            continue
+        face = np.array([
+            colors[assign[i]] if 0 <= assign[i] < n_jets else NO_JET_COLOR
+            for i in sel
+        ])
+        area = marker_area(pt[sel])
+        if marker != "o":
+            # Most misclustered particles are soft, and at s ~ 4 the flag is
+            # invisible. Give them a floor so the marking can be seen at all.
+            area = np.maximum(area, FLAG_AREA_MIN)
+        ax.scatter(eta[sel], phi[sel], s=area, marker=marker,
+                   facecolor=face, edgecolors=MARKER_EDGE, linewidths=lw,
+                   alpha=0.85, zorder=3 if marker == "o" else 4)
+
+    # --- hard partons: down-pointing from the Higgs, up-pointing from the Z
+    p_eta, p_phi, p_pdg, p_from_h, p_jet = hard_partons(event)
+    for k in range(len(p_eta)):
+        jet = int(p_jet[k])
+        matched = 0 <= jet < n_jets
+        ax.scatter([p_eta[k]], [p_phi[k]], s=240,
+                   marker="v" if p_from_h[k] else "^",
+                   facecolor=colors[jet] if matched else "white",
+                   edgecolors="0.05", linewidths=1.4, zorder=7)
+        ax.annotate(pdg_name(p_pdg[k], math=True), (p_eta[k], p_phi[k]),
+                    textcoords="offset points", xytext=(8, -12), fontsize=8,
+                    color="0.05", zorder=7)
+
+    ax.set_xlim(-2.9, 2.9)
+    ax.set_ylim(-np.pi, np.pi)
+    ax.set_xlabel(r"$\eta$")
+    ax.set_ylabel(r"$\phi$")
+    ax.set_yticks([-np.pi, -np.pi / 2, 0, np.pi / 2, np.pi])
+    ax.set_yticklabels([r"$-\pi$", r"$-\pi/2$", "0", r"$\pi/2$", r"$\pi$"])
+    ax.grid(color="0.9", lw=0.5)
+    ax.set_axisbelow(True)
+    for spine in ax.spines.values():
+        spine.set_color("0.35")
+        spine.set_linewidth(0.6)
+
+    # --- right-hand column: the three mH values, then the marker key
+    side.text(0.0, 1.0, mh_box_text(event), transform=side.transAxes,
+              fontsize=8.5, family="monospace", va="top", ha="left",
+              linespacing=1.6,
+              bbox=dict(boxstyle="round,pad=0.5", fc="white", ec="0.45", lw=0.8))
+
+    handles = [
+        Line2D([], [], marker="o", color="none", markerfacecolor="0.75",
+               markeredgecolor=MARKER_EDGE, markeredgewidth=0.5, markersize=9,
+               label=r"gen particles (area $\propto p_T$)"),
+        Line2D([], [], marker="v", color="none", markerfacecolor="white",
+               markeredgecolor="0.05", markeredgewidth=1.2, markersize=11,
+               label="gen quarks from Higgs"),
+        Line2D([], [], marker="^", color="none", markerfacecolor="white",
+               markeredgecolor="0.05", markeredgewidth=1.2, markersize=11,
+               label="gen quarks (other, from Z)"),
+    ]
+    if np.any(kind == "s"):
+        handles.append(
+            Line2D([], [], marker="s", color="none", markerfacecolor="0.75",
+                   markeredgecolor=MARKER_EDGE, markeredgewidth=1.0, markersize=9,
+                   label="non-H particle in an H jet"))
+    if np.any(kind == "X"):
+        handles.append(
+            Line2D([], [], marker="X", color="none", markerfacecolor="0.75",
+                   markeredgecolor=MARKER_EDGE, markeredgewidth=1.0, markersize=10,
+                   label="H particle outside the H jets"))
+    legend = side.legend(handles=handles, loc="upper left",
+                         bbox_to_anchor=(0.0, 0.80), frameon=True, fontsize=8,
+                         labelspacing=0.9, borderpad=0.6, handletextpad=0.6)
+    legend._legend_box.align = "left"
+    return fig
+
+
 PDG_NAMES = {1: "d", 2: "u", 3: "s", 4: "c", 5: "b", 6: "t", 21: "g",
              11: "e", 13: "mu", 15: "tau", 22: "gamma"}
+# mathtext names for the ones that are not a plain latin letter, so an antiquark
+# label comes out as \bar{s} rather than "sbar".
+PDG_MATH_NAMES = {13: r"\mu", 15: r"\tau", 22: r"\gamma"}
 
 
-def pdg_name(pdg):
+def pdg_name(pdg, math=False):
+    """Flavour label. math=True returns mathtext with a real overbar.
+
+    The plain form is kept for the monospace annotation box of the detailed
+    style, where mathtext would break the column alignment.
+    """
     a = abs(int(pdg))
+    anti = a in (1, 2, 3, 4, 5, 6) and int(pdg) < 0
+    if math:
+        symbol = PDG_MATH_NAMES.get(a, PDG_NAMES.get(a, str(a)))
+        return rf"$\bar{{{symbol}}}$" if anti else f"${symbol}$"
     name = PDG_NAMES.get(a, str(a))
-    if a in (1, 2, 3, 4, 5, 6) and int(pdg) < 0:
-        return name + "bar"
-    return name
+    return name + "bar" if anti else name
 
 
 def annotation_text(event, meta, window, page_index):
@@ -362,7 +564,7 @@ def annotation_text(event, meta, window, page_index):
     return "\n".join(lines)
 
 
-def draw_cover(payload):
+def draw_cover(payload, style="detailed"):
     """Overview page: which windows were selected and how much they hold."""
     fig = plt.figure(figsize=(11.7, 8.3))
     ax = fig.add_subplot(111)
@@ -391,6 +593,48 @@ def draw_cover(payload):
             f" ({window.get('yield_percent', 0.0):5.2f}% of events read)"
             f"   {len(window['events']):3d} drawn"
         )
+    if style == "simple":
+        has_all_partons = any(
+            "hardparton_eta" in e for w in payload["windows"] for e in w["events"])
+        text += [
+            "",
+            "reading a page",
+            "  circle   = one stable gen particle, area = pT (linear, same on every page).",
+            "             Particle types are not distinguished",
+            "  colour   = the gen jet it was clustered into, j0..jN in pT order;",
+            "             grey = in no kept jet (cannot happen for Durham)",
+            "  triangle = hard parton: pointing down from the Higgs, up from the Z",
+            "             (filled with the colour of the jet it matched to, for",
+            "             the Higgs partons, which are the only ones matched),",
+            "             labelled with its flavour",
+            "  square   = a particle that does NOT descend from a Higgs parton but was",
+            "             clustered into a Higgs jet - contamination, pushes mH up",
+            "  cross    = a particle that DOES descend from a Higgs parton but was",
+            "             clustered outside the Higgs jets - leakage, pushes mH down",
+            "             (provenance from gt_labels, the same MC ancestry walk the",
+            "             histmaker uses; 'Higgs jet' = a jet a Higgs parton matched to)",
+            "  dashed vertical lines = the |eta| < 2.56 acceptance edge",
+            "  neutrinos and |eta| > 2.56 particles are absent by construction",
+            "",
+            "the box beside each plot: the three rungs of the mH decomposition figure",
+            "  Physics            gen jets with gen momenta - no detector at all",
+            "                     (h_mH_gen, the curve these windows cut on)",
+            "  Detector           the same Higgs particles swapped for their reco",
+            "                     partners, no jets (h_mH_reco_particles_matched)",
+            "  Detector + Physics the fully reconstructed mH: reco particles",
+            "                     clustered into jets, H jets by dR (h_mH_reco).",
+            "                     'undefined' when that matching failed",
+        ]
+        if not has_all_partons:
+            text += [
+                "",
+                "  NOTE: this payload predates the all-hard-parton block, so only",
+                "        the Higgs partons are drawn. Re-run stage 1 to get the Z ones.",
+            ]
+        ax.text(0.02, 0.98, "\n".join(text), transform=ax.transAxes, fontsize=10,
+                family="monospace", va="top", ha="left")
+        return fig
+
     text += [
         "",
         "reading a page",
@@ -422,7 +666,7 @@ def draw_divider(window):
     return fig
 
 
-def draw_payload(payload, output, pid_groups="five", cover=True):
+def draw_payload(payload, output, pid_groups="five", cover=True, style="detailed"):
     groups = PID_GROUPS_FIVE if pid_groups == "five" else PID_GROUPS_FOUR
     meta = {k: payload[k] for k in
             ("process", "jet_algorithm", "n_jets", "n_higgs_jets")}
@@ -430,7 +674,7 @@ def draw_payload(payload, output, pid_groups="five", cover=True):
     n_pages = 0
     with PdfPages(output) as pdf:
         if cover:
-            fig = draw_cover(payload)
+            fig = draw_cover(payload, style)
             pdf.savefig(fig)
             plt.close(fig)
             n_pages += 1
@@ -444,7 +688,9 @@ def draw_payload(payload, output, pid_groups="five", cover=True):
             for i, event in enumerate(
                 sorted(window["events"], key=lambda e: float(e["mH_gen"]))
             ):
-                fig = draw_event(event, meta, window, i, groups)
+                fig = (draw_event_simple(event, meta, window, i)
+                       if style == "simple"
+                       else draw_event(event, meta, window, i, groups))
                 pdf.savefig(fig)
                 plt.close(fig)
                 n_pages += 1
@@ -457,14 +703,18 @@ def main(argv=None):
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--payload", required=True)
     p.add_argument("--output", default=None)
-    p.add_argument("--pid-groups", choices=["five", "four"], default="five")
+    p.add_argument("--pid-groups", choices=["five", "four"], default="five",
+                   help="--style detailed only")
+    p.add_argument("--style", choices=["detailed", "simple"], default="detailed")
     p.add_argument("--no-cover-page", action="store_true")
     args = p.parse_args(argv)
 
     with open(args.payload, "rb") as handle:
         payload = pickle.load(handle)
-    output = args.output or os.path.splitext(args.payload)[0] + ".pdf"
-    draw_payload(payload, output, args.pid_groups, not args.no_cover_page)
+    suffix = "_simple.pdf" if args.style == "simple" else ".pdf"
+    output = args.output or os.path.splitext(args.payload)[0] + suffix
+    draw_payload(payload, output, args.pid_groups, not args.no_cover_page,
+                 args.style)
     return 0
 
 

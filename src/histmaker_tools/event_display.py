@@ -26,6 +26,13 @@ SCALAR_COLUMNS = [
     "mH_gen_all_jets",
     "mH_visible_truth",
     "mH_hard_partons",
+    # The three rungs of the mH decomposition figure, in its own naming
+    # (mh_decomposition_plots.py, GENPHYS_LABELS): "Physics" is mH_gen above,
+    # "Detector" is the same Higgs particles with no jets at all, and
+    # "Detector + Physics" is the fully reconstructed mH.
+    "mH_detector",
+    "mH_det_phys",
+    "mH_det_phys_fixed",
     "E_nu_total",
     "E_nu_from_H",
     "E_vis_clustered",
@@ -41,6 +48,10 @@ PARTICLE_COLUMNS = [
     "part_py",
     "part_pz",
     "part_jet_index",
+    # Which Higgs parton a displayed particle descends from (-1 = none of them,
+    # i.e. it belongs to the Z system). Lets the display flag the particles that
+    # were clustered into the wrong side of the event.
+    "part_higgs_label",
 ]
 JET_COLUMNS = [
     "jet_eta",
@@ -59,7 +70,21 @@ PARTON_COLUMNS = [
     "parton_pdg",
     "parton_to_jet",
 ]
-PAYLOAD_COLUMNS = SCALAR_COLUMNS + PARTICLE_COLUMNS + JET_COLUMNS + PARTON_COLUMNS
+# Every hard parton of the event, not only the Higgs ones: the `parton_*` block
+# above is MC_part_idx (Higgs decay products), this one is MC_quark_idx (all
+# status-23 quarks and gluons), with a flag saying which of them are the same
+# partons as in `parton_*`. Needed by the simple display, which draws the Z
+# partons too.
+HARD_PARTON_COLUMNS = [
+    "hardparton_eta",
+    "hardparton_phi",
+    "hardparton_pt",
+    "hardparton_energy",
+    "hardparton_pdg",
+    "hardparton_higgs_slot",
+]
+PAYLOAD_COLUMNS = (SCALAR_COLUMNS + PARTICLE_COLUMNS + JET_COLUMNS
+                   + PARTON_COLUMNS + HARD_PARTON_COLUMNS)
 
 
 def _serialize(df, prefix, collection, keys=("eta", "phi", "pt", "pdg", "energy")):
@@ -144,6 +169,14 @@ def build_event_display_graph(df, args, n_jets, n_higgs_jets, apply_matched_filt
     df = df.Define("mH_gen_all_jets", "inv_mass_gen_all")
     df = df.Define("mH_visible_truth", "inv_mass_stable_gt_particles_from_higgs")
     df = df.Define("mH_hard_partons", "inv_mass_MC_part")
+    # "Detector": the Higgs particles swapped for their RecoMCLink partners, no
+    # jets, so no assignment error can enter (h_mH_reco_particles_matched).
+    df = df.Define("mH_detector", "inv_mass_reco_particles_matched_from_higgs")
+    # "Detector + Physics": the real reconstructed mH (h_mH_reco), plus the
+    # variant with the corrected parton->reco-jet mapping (h_mH_reco_fixed).
+    # Both are -1 when the reco H jets were not found.
+    df = df.Define("mH_det_phys", "inv_mass_reco")
+    df = df.Define("mH_det_phys_fixed", "inv_mass_reco_fixed")
     df = df.Define("n_gen_jets_total", "(int) FastJet_jets.jets.size()")
 
     # --- what to draw
@@ -165,10 +198,37 @@ def build_event_display_graph(df, args, n_jets, n_higgs_jets, apply_matched_filt
     df = df.Define(
         "parton_to_jet", "ROOT::VecOps::RVec<int>(HardP_to_GenJet_mapping)"
     )
+
+    # --- all hard partons (MC_quark_idx, defined by truth_matching.py above),
+    # i.e. the Higgs ones plus the Z ones. Same treatment as MC_part_asjets.
+    df = df.Define(
+        "MC_quark_asjets",
+        "FCCAnalyses::ZHfunctions::select_rp("
+        "FCCAnalyses::ZHfunctions::vec_mc_to_rp(Particle), MC_quark_idx)",
+    )
+    df = _serialize(
+        df, "hardparton", "MC_quark_asjets", keys=("eta", "phi", "pt", "energy")
+    )
+    df = df.Define(
+        "hardparton_pdg",
+        "FCCAnalyses::EventDisplay::parton_pdgs(Particle, MC_quark_idx)",
+    )
+    # -1 for the Z partons, else the parton's slot in the `parton_*` block.
+    df = df.Define(
+        "hardparton_higgs_slot",
+        "FCCAnalyses::EventDisplay::subset_position(MC_quark_idx, MC_part_idx)",
+    )
     df = df.Define(
         "part_jet_index",
         "FCCAnalyses::EventDisplay::constituent_jet_index("
         "FastJet_jets, (int) stable_gen_particles.size(), {})".format(n_jets),
+    )
+    # gt_labels is per Particle; stable_gen_particles_idx (particle_filter.py)
+    # maps the displayed collection back onto it.
+    df = df.Define(
+        "part_higgs_label",
+        "FCCAnalyses::EventDisplay::gather_labels("
+        "gt_labels, stable_gen_particles_idx)",
     )
 
     # --- invisible / out-of-acceptance energy

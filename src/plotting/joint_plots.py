@@ -113,48 +113,6 @@ if family:
 bins_E = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
 
 
-def annotate_matrix_plot_with_arrows(fig):
-    ax = fig.add_axes([0, 0, 1, 1], frameon=False)
-    ax.set_axis_off()
-    ax.annotate(
-        "",
-        xy=(0.009, 0.60),
-        xycoords="figure fraction",
-        xytext=(0.009, 0.99),
-        textcoords="figure fraction",
-        arrowprops=dict(arrowstyle="->", lw=1.2),
-        color="gray",
-    )
-    ax.text(
-        0.0048,
-        0.75,
-        "More B-hadron content",
-        transform=ax.transAxes,
-        rotation=90,
-        ha="center",
-        va="center",
-        fontsize=9.5,
-    )
-    ax.annotate(
-        "",
-        xy=(0.40, 0.99),
-        xycoords="figure fraction",
-        xytext=(0.01, 0.99),
-        textcoords="figure fraction",
-        arrowprops=dict(arrowstyle="->", lw=1.2),
-        color="gray",
-    )
-    ax.text(
-        0.25,
-        0.995,
-        "Higher number of final-state jets",
-        transform=ax.transAxes,
-        ha="center",
-        va="center",
-        fontsize=9.5,
-    )
-
-
 def print_params(popt):
     if len(popt) == 2:
         return f"S={round(popt[0], 2)} C={round(popt[1], 2)}"
@@ -711,8 +669,6 @@ for j in range(len(ax_mH_per_process)):
         ax_mH_per_process[j, i].set_xlim(90, 150)
         ax_mH_per_process[j, i].legend(fontsize=6.5)
 fig.tight_layout()
-# arrows dropped: the per-panel jet-count badge carries this
-# annotate_matrix_plot_with_arrows(fig)
 
 fig.tight_layout()
 fig_mH_path_per_process = os.path.join(outputDir, f"Higgs_mass_per_process.pdf")
@@ -728,17 +684,9 @@ fig_mH_twojets_path = os.path.join(outputDir, f"Higgs_mass_2jets.pdf")
 fig_mH.tight_layout()
 fig_mH_twojets.tight_layout()
 fig_mH_per_process.tight_layout()
-# arrows dropped: the per-panel jet-count badge carries this
-# annotate_matrix_plot_with_arrows(fig_mH_per_process)
 fig_ang_phi.tight_layout()
-# arrows dropped: the per-panel jet-count badge carries this
-# annotate_matrix_plot_with_arrows(fig_ang_phi)
 fig_ang_theta.tight_layout()
-# arrows dropped: the per-panel jet-count badge carries this
-# annotate_matrix_plot_with_arrows(fig_ang_theta)
 fig_ang_eta.tight_layout()
-# arrows dropped: the per-panel jet-count badge carries this
-# annotate_matrix_plot_with_arrows(fig_ang_eta)
 
 print("Saving figure to", fig_mH_path)
 print("Saving figure to", fig_mH_twojets_path)
@@ -1136,8 +1084,6 @@ for ax in [ax_fit_trials, ax_fit_trials_calojets]:
             ax[i, j].set_xlabel("$E_{true}$ [GeV]")
 
 fig.tight_layout()
-# arrows dropped: the per-panel jet-count badge carries this
-# annotate_matrix_plot_with_arrows(fig)
 fig_path = os.path.join(outputDir, f"Jet_Energy_Resolution_PF_vs_CaloJets.pdf")
 
 print("Saving figure to", fig_path)
@@ -1145,22 +1091,16 @@ fig.savefig(fig_path)
 
 # Save angular resolution plots
 fig_ang_phi_pf_calo.tight_layout()
-# arrows dropped: the per-panel jet-count badge carries this
-# annotate_matrix_plot_with_arrows(fig_ang_phi_pf_calo)
 fig_path_angular_phi_pf_calo = os.path.join(outputDir, f"Angular_Resolution_Phi_comparison_PF_vs_CaloJets.pdf")
 print("Saving figure to", fig_path_angular_phi_pf_calo)
 fig_ang_phi_pf_calo.savefig(fig_path_angular_phi_pf_calo)
 
 fig_ang_theta_pf_calo.tight_layout()
-# arrows dropped: the per-panel jet-count badge carries this
-# annotate_matrix_plot_with_arrows(fig_ang_theta_pf_calo)
 fig_path_angular_theta_pf_calo = os.path.join(outputDir, f"Angular_Resolution_Theta_comparison_PF_vs_CaloJets.pdf")
 print("Saving figure to", fig_path_angular_theta_pf_calo)
 fig_ang_theta_pf_calo.savefig(fig_path_angular_theta_pf_calo)
 
 fig_ang_eta_pf_calo.tight_layout()
-# arrows dropped: the per-panel jet-count badge carries this
-# annotate_matrix_plot_with_arrows(fig_ang_eta_pf_calo)
 fig_path_angular_eta_pf_calo = os.path.join(outputDir, f"Angular_Resolution_eta_comparison_PF_vs_CaloJets.pdf")
 print("Saving figure to", fig_path_angular_eta_pf_calo)
 fig_ang_eta_pf_calo.savefig(fig_path_angular_eta_pf_calo)
@@ -1178,16 +1118,12 @@ print("Saving figure to", fig_E_mH_gluons_path)
 fig_E_mH_gluons.savefig(fig_E_mH_gluons_path)
 
 fig_fit_trials_calojets.tight_layout()
-# arrows dropped: the per-panel jet-count badge carries this
-# annotate_matrix_plot_with_arrows(fig_fit_trials_calojets)
 path_cj = os.path.join(outputDir, f"Jet_Energy_Resolution_fitting_CaloJets.pdf")
 fig_fit_trials_calojets.savefig(path_cj)
 
 # Similar for fig_fit_trials
 
 fig_fit_trials.tight_layout()
-# arrows dropped: the per-panel jet-count badge carries this
-# annotate_matrix_plot_with_arrows(fig_fit_trials)
 path_pf = os.path.join(outputDir, f"Jet_Energy_Resolution_fitting_PF_Jets.pdf")
 fig_fit_trials.savefig(path_pf)
 
@@ -1271,7 +1207,6 @@ if family is None:
                 ax[i, j].legend(fontsize=6.5)
                 ax[i, j].grid()
         fig.tight_layout()
-        annotate_matrix_plot_with_arrows(fig)
         fig_path = os.path.join(
             outputDir, f"JER_comparison_{prefix}_PF_vs_CaloJets.pdf"
         )

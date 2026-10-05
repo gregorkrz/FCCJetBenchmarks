@@ -541,12 +541,13 @@ python src/plotting/mh_decomposition_plots.py --inputDir $PATH_TO_HISTOGRAMS
   The "Physics" curve is `h_mH_gen`: the Higgs mass from gen jets built out of stable gen particles.
   The detector is perfect there, so the width is a pure jet-definition and jet-assignment effect.
   For `p8_ee_ZH_6jet_LF_ecm240` the curve is asymmetric: ~1% of entries below 108 GeV, ~5% above 160 GeV.
-  These displays show 20 events from each of three windows, far below, at, and far above the peak.
+  These displays show 5 events from each of three windows, far below, at, and far above the peak
+  (`N_PER_WINDOW`).
 
   ```bash
   source env.sh
-  bash scripts/make_event_displays.sh                       # both stages, 20 per window
-  N_PER_WINDOW=3 MAX_FILES=1 bash scripts/make_event_displays.sh   # quick look
+  bash scripts/make_event_displays.sh                       # both stages, 5 per window, 1 file
+  N_PER_WINDOW=20 MAX_FILES=2 bash scripts/make_event_displays.sh  # more events, ~2x slower
   bash scripts/make_event_displays.sh --draw-only           # redraw from the existing payload
   ```
 
@@ -557,8 +558,11 @@ python src/plotting/mh_decomposition_plots.py --inputDir $PATH_TO_HISTOGRAMS
   `src/histmaker.py`, so the events drawn are the events that fill `h_mH_gen`, and writes a small pickle.
   Stage 2 (`src/plotting/event_display_plots.py`) is plain matplotlib, so redrawing is cheap.
 
-  The output is one multi-page PDF. A cover page records the windows and their yields. Each event then gets
-  a page in the η–φ plane:
+  The output is two multi-page PDFs, `<process>_event_displays.pdf` and `<process>_event_displays_simple.pdf`,
+  drawn from the same payload. A cover page records the windows and their yields. Each event then gets
+  a page in the η–φ plane.
+
+  The **detailed** one (`--style detailed`, the default) shows:
 
   - particles coloured by PID, **marker area proportional to $p_T$**
   - gen-jet axes, with the 90% $p_T$ core of each jet outlined. Durham has no radius and assigns every
@@ -567,8 +571,32 @@ python src/plotting/mh_decomposition_plots.py --inputDir $PATH_TO_HISTOGRAMS
   - an annotation box: all four $m_H$ definitions, the per-jet table, the parton→jet assignment with each
     ΔR, and the invisible and out-of-acceptance energy
 
-  Stage 1 checks two things per event: that the summed constituent momenta reproduce each jet's momentum,
-  and that $m_H$ recomputed from the Higgs-matched jets equals `inv_mass_gen`. It aborts on failure rather
+  The **simple** one (`--style simple`) drops everything that is not the jet-assignment story. No title,
+  no per-jet table, and the right-hand column holds only the $m_H$ box and a four-entry marker key:
+
+  - every stable gen particle is a circle, **marker area proportional to $p_T$**, coloured by the gen jet
+    it was clustered into (grey = in no kept jet, which the stage-1 assertions say cannot happen for
+    Durham). Particle types are *not* distinguished — all round, no PID colouring
+  - the hard partons are triangles: pointing **down** for the Higgs decay partons, **up** for the rest
+    (the Z decay quarks). A triangle is filled with the colour of the jet it matched to, which only the
+    Higgs partons have, and labelled with its flavour
+  - misclustered particles get their own shape, from the `gt_labels` MC ancestry the histmaker already
+    computes: a **square** for a particle that does not descend from a Higgs parton but was clustered into
+    a Higgs jet (contamination, pushes $m_H$ up), a **cross** for one that does but was clustered outside
+    the Higgs jets (leakage, pushes $m_H$ down). Both get a marker-area floor, since most of them are soft
+  - the box beside the plot carries the three rungs of the decomposition figure for that single event:
+    `Physics` (= `h_mH_gen`, the curve the windows cut on), `Detector` (`h_mH_reco_particles_matched`,
+    the same Higgs particles swapped for their reco partners with no jets at all) and
+    `Detector + Physics` (`h_mH_reco`, the fully reconstructed $m_H$; `undefined` when the reco H-jet
+    matching failed)
+
+  ```bash
+  python src/plotting/event_display_plots.py --payload <payload.pkl> --style simple
+  ```
+
+  Stage 1 checks three things per event: that the summed constituent momenta reproduce each jet's momentum,
+  that the Higgs partons all reappear in the all-hard-parton block the simple style reads, and that $m_H$
+  recomputed from the Higgs-matched jets equals `inv_mass_gen`. It aborts on failure rather
   than warning, because a broken constituent→jet mapping would attribute particles to the wrong jets
   silently. Useful flags:
   `--windows auto` (derive the windows from the histogram instead of the measured defaults),

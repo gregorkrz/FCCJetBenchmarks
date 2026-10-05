@@ -39,6 +39,12 @@ Per-event inspection:
   peak — for the 6-jet light-flavour process. Particles coloured by PID with marker area proportional to
   $p_T$; gen-jet axes and cores overlaid, Higgs-matched jets badged. Produced by
   `bash scripts/make_event_displays.sh`.
+- `plots/event_displays/p8_ee_ZH_6jet_LF_ecm240_event_displays_simple.pdf`: the same events, stripped down
+  to the jet assignment — every particle a circle with area proportional to $p_T$, coloured by the gen jet
+  it was clustered into, and the hard partons as triangles pointing down (from the Higgs) or up (from the Z).
+  Particles on the wrong side of the H/Z split are flagged: square = non-Higgs particle in a Higgs jet,
+  cross = Higgs particle outside them. Each page carries the event's `Physics`, `Detector` and
+  `Detector + Physics` masses, i.e. the three curves of the decomposition figure for that one event.
 
 Reference:
 - [`doc/jet_algorithms.tex`](doc/jet_algorithms.tex): short note on what each plotted algorithm actually

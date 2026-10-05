@@ -280,22 +280,6 @@ def style_jer_axis(ax, ymax=None, headroom=1.25):
         ax.set_ylim(0, headroom * ymax)
 
 
-def annotate_matrix_plot_with_arrows(fig):
-    """The two grey guide arrows on the 5x3 'full plots' slides."""
-    ax = fig.add_axes([0, 0, 1, 1], frameon=False)
-    ax.set_axis_off()
-    ax.annotate("", xy=(0.009, 0.60), xycoords="figure fraction",
-                xytext=(0.009, 0.99), textcoords="figure fraction",
-                arrowprops=dict(arrowstyle="->", lw=1.2), color="gray")
-    ax.text(0.0048, 0.75, "More B-hadron content", transform=ax.transAxes,
-            rotation=90, ha="center", va="center", fontsize=9.5)
-    ax.annotate("", xy=(0.40, 0.99), xycoords="figure fraction",
-                xytext=(0.01, 0.99), textcoords="figure fraction",
-                arrowprops=dict(arrowstyle="->", lw=1.2), color="gray")
-    ax.text(0.25, 0.995, "Higher number of final-state jets",
-            transform=ax.transAxes, ha="center", va="center", fontsize=9.5)
-
-
 def grid_shape(meta):
     rows = max(m["grid_row"] for m in meta.values()) + 1
     cols = max(m["grid_col"] for m in meta.values()) + 1
