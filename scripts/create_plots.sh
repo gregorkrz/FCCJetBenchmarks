@@ -108,23 +108,10 @@ PATH_TO_HISTOGRAMS="$INPUT_DIR" python src/plotting/presentation_jer_plots.py
 # ------------------------------------------------------------------
 # mH decomposition (invisible loss / detector / jet definition / reco
 # clustering, and the PFlow-object variants). Reads the histmaker ROOT files
-# directly, so it needs neither the dashboard nor ROOT. Uses the corrected
-# parton -> reco-jet mapping when the histograms carry it, and also emits the
+# directly, so it needs neither the dashboard nor ROOT. Also emits the
 # common-event-sample figures if the run produced h_mH_common_*.
 # ------------------------------------------------------------------
-RECO_HIST=h_mH_reco
-if python - "$INPUT_DIR" <<'PYEOF'
-import glob, sys, uproot
-files = glob.glob(f"{sys.argv[1]}/*/*.root")
-sys.exit(0 if files and "h_mH_reco_fixed" in
-         [k.split(";")[0] for k in uproot.open(files[0]).keys(cycle=False)] else 1)
-PYEOF
-then
-    RECO_HIST=h_mH_reco_fixed
-fi
-echo "mH decomposition using $RECO_HIST"
-python src/plotting/mh_decomposition_plots.py --inputDir "$INPUT_DIR" \
-    --reco-hist "$RECO_HIST" --compare-fixed
+python src/plotting/mh_decomposition_plots.py --inputDir "$INPUT_DIR"
 
 # ------------------------------------------------------------------
 # Event displays for the tails of the mH "Physics" curve (h_mH_gen): 20 events

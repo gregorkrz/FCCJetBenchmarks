@@ -516,19 +516,6 @@ def build_graph(df, dataset):
         ("h_mH_reco", "Higgs mass from reco jets;M_H (reco jets);Events", 1000, 0, 250),
         "inv_mass_reco",
     )
-    # Same as h_mH_reco but with the corrected parton->reco-jet mapping (see
-    # truth_matching.py); kept side by side so both can be compared on identical
-    # events. Identical to h_mH_reco for 2-jet processes by construction.
-    h_mH_reco_fixed = df.Histo1D(
-        (
-            "h_mH_reco_fixed",
-            "Higgs mass from reco jets, fixed gen->reco mapping;M_H (reco jets);Events",
-            1000,
-            0,
-            250,
-        ),
-        "inv_mass_reco_fixed",
-    )
     # mH from the ideal-matching jets computed in this same run, plus the three
     # PFlow-object definitions restricted to events where *both* jet definitions
     # found all the Higgs jets - the only way to compare them on identical events
@@ -538,13 +525,13 @@ def build_graph(df, dataset):
             ("h_mH_reco_ideal",
              "Higgs mass, ideal-matching jets (same run);M_H;Events", 1000, 0, 250),
             "inv_mass_reco_alt"))
-        df_common = df.Filter("inv_mass_reco_fixed > 0 && inv_mass_reco_alt > 0",
+        df_common = df.Filter("inv_mass_reco > 0 && inv_mass_reco_alt > 0",
                               "Higgs jets found by both jet definitions")
         for name, column, title in (
             ("h_mH_common_detector", "inv_mass_reco_particles_matched_from_higgs",
              "perfect clustering, PFlow objects"),
             ("h_mH_common_ideal", "inv_mass_reco_alt", "truth jets, PFlow objects"),
-            ("h_mH_common_reco", "inv_mass_reco_fixed", "reco jets, PFlow objects"),
+            ("h_mH_common_reco", "inv_mass_reco", "reco jets, PFlow objects"),
             # Gen jets with gen momenta, i.e. the jet definition with no detector
             # at all, on the same common event sample as the three above.
             ("h_mH_common_gen", "inv_mass_gen", "truth jets, gen momenta"),
@@ -595,7 +582,6 @@ def build_graph(df, dataset):
     )
     histograms += [
         h_mH_reco,
-        h_mH_reco_fixed,
         h_mH_gen,
         h_mH_gen_all,
         h_mH_reco_all,

@@ -2,6 +2,8 @@
 # per process). This is the tree everything now points at.
 export PATH_TO_DATASET=/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260902_seeded
 export PATH_TO_HISTOGRAMS=/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks_histograms/IDEA_20260902_seeded
+# Re-run of the histmaker on the same dataset with the current H-jet matching.
+export PATH_TO_HISTOGRAMS_V2=${PATH_TO_HISTOGRAMS}_v2
 
 # Side trees of the same campaign:
 #   _nofilter        --no-filter-fully-matched, used by the mH decomposition so

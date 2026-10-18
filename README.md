@@ -172,6 +172,17 @@ Available within SLAC S3DF, or on request.
 > point at `IDEA_20251114`, which no script reads.
 
 
+### Paths in use
+
+| | path |
+| --- | --- |
+| Dataset (`$PATH_TO_DATASET`) | `/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260902_seeded` |
+| Histograms (`$PATH_TO_HISTOGRAMS_V2`) | `/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks_histograms/IDEA_20260902_seeded_v2` |
+| Plots | `$PATH_TO_HISTOGRAMS_V2/plots` (written by `scripts/create_plots.sh $PATH_TO_HISTOGRAMS_V2`) |
+
+`IDEA_20260902_seeded` (without `_v2`) is the previous histogram tree, kept for reference; its `h_mH_reco`
+predates the current parton -> reco-jet matching.
+
 ### Dataset generation
 
 ```bash
@@ -527,8 +538,8 @@ python src/plotting/mh_decomposition_plots.py --inputDir $PATH_TO_HISTOGRAMS
   shoulder and the low-mass tails - plus `mh_decomposition_summary.md`/`.csv` with $\mu$, $\sigma$, median,
   68% half-width and the fraction of events for which each definition is defined, and a `README.md` recording
   the provenance of every curve. Useful flags: `--rebin N` (merge N of the 0.25 GeV bins for drawing; the
-  quoted numbers always use the full resolution), `--reco-hist h_mH_reco_fixed` and `--compare-fixed`
-  (see below), `--zoom-range`/`--wide-range`, `--processes`.
+  quoted numbers always use the full resolution), `--reco-hist`, `--zoom-range`/`--wide-range`,
+  `--processes`.
 
   Note that the two jet-based curves are only filled for events in which all Higgs jets were successfully
   parton-matched (37% of 6-jet events, 84% of `Z(→νν)H(→bb)`), and that the default fully-matched filter
@@ -870,28 +881,6 @@ python scripts/generate_analysis_jobs.py --algos durham,ideal \
 `--jobs-dir` keeps the side run's `.slurm` files away from the production ones in `jobs/`, `--time` shortens
 the SLURM limit, and `--extra-args` appends arbitrary flags to every histmaker command (note the
 `--extra-args=--flag` form: a value starting with `-` has to be attached with `=`).
-
-### The parton -> reco-jet mapping fix
-
-`truth_matching.py` selects the Higgs jets by composing the parton->genjet matching with
-`reco_gen_jet_matching`, which is a **reco->gen** map, so it only lands on the right reco jet where that
-permutation is its own inverse - identity or pure pairwise swaps are fine, a cycle of length >= 3 picks a
-wrong (but same-size) jet subset and the event survives with a wrong mass, typically in the high tail. Two
-jets can never form such a cycle, so 2-jet processes are unaffected; measured on the 6-jet processes, ~2-3%
-of the entries move.
-
-`inv_mass_reco_fixed` / `h_mH_reco_fixed` redo the selection with a genuine gen->reco greedy matching (run in
-that direction rather than inverted, since greedy matching is not symmetric) and are filled alongside the
-original ones, so both can be compared on identical events:
-
-```bash
-python src/plotting/mh_decomposition_plots.py --inputDir ${PATH_TO_HISTOGRAMS}_subset20_nofilter \
-  --reco-hist h_mH_reco_fixed --compare-fixed
-```
-
-This draws the decomposition from the corrected histograms and adds `mH_mapping_fix_comparison*.pdf` plus
-`mh_mapping_fix_summary.md`/`.csv` overlaying old vs. fixed for both methods. The histograms produced before
-this change (i.e. everything currently under `$PATH_TO_HISTOGRAMS`) still use the old mapping.
 
 ### Custom jet matching radius
 
