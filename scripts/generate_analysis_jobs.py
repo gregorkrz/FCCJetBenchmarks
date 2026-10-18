@@ -80,6 +80,7 @@ template = """#!/bin/bash
 #SBATCH --mem={memory}                   # Request X GB of memory
 #SBATCH --cpus-per-task={cpus}           # Request X CPU cores
 #SBATCH --nodes=1                        # Request 1 node
+#SBATCH --constraint=OS_VER:8.10          # the OS 9.6 nodes lack libOpenGL.so.0 for the --nv bind
 #SBATCH --time={time}                    # Set the time limit to 12 hrs. - this times out for 10k events!!!!
 #SBATCH --job-name={job_name}            # Name the job
 #SBATCH --output={output_logs}           # Redirect stdout to a log file
