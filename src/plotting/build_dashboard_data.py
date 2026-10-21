@@ -113,15 +113,21 @@ def method_family_and_radius(method_name):
 
 
 def _sanitize(obj):
-    """Recursively convert numpy types/arrays to plain JSON-serializable Python types."""
+    """Recursively convert numpy types/arrays to plain JSON-serializable Python types.
+    Floats are rounded to 6 significant decimals to shrink the main JSON ~2x without
+    noticeably affecting plots. NaN/+-Infinity become None so the result is strict JSON.
+    """
     if isinstance(obj, dict):
         return {k: _sanitize(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_sanitize(v) for v in obj]
     if isinstance(obj, np.ndarray):
         return _sanitize(obj.tolist())
-    if isinstance(obj, (np.floating,)):
-        return float(obj)
+    if isinstance(obj, (np.floating, float)):
+        v = float(obj)
+        if v != v or v == float("inf") or v == float("-inf"):
+            return None
+        return round(v, 6)
     if isinstance(obj, (np.integer,)):
         return int(obj)
     return obj

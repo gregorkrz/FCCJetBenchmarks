@@ -146,9 +146,30 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   #coeffModelDesc .formula { font-family: ui-monospace, Menlo, Consolas, monospace; background: #e8efe8;
                              padding: 1px 5px; border-radius: 3px; }
   #coeffModelDesc .metrics { font-size: 11.5px; color: #567; margin-top: 6px; }
+  #loading-overlay { position: fixed; inset: 0; background: #fff;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10000; font-family: system-ui, sans-serif; color: #333;
+    transition: opacity 0.3s ease; }
+  #loading-overlay.hidden { opacity: 0; pointer-events: none; }
+  #loading-overlay .box { text-align: center; }
+  #loading-overlay .bar { width: 320px; height: 6px; border-radius: 3px;
+    background: #eee; overflow: hidden; margin: 14px auto 0; }
+  #loading-overlay .bar::after { content: ""; display: block; width: 40%;
+    height: 100%; background: #1f77b4;
+    animation: lb 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+  @keyframes lb { 0% { transform: translateX(-100%); }
+                  100% { transform: translateX(350%); } }
 </style>
 </head>
 <body>
+<div id="loading-overlay">
+  <div class="box">
+    <div style="font-size: 18px; font-weight: 600;">Loading dashboard...</div>
+    <div style="font-size: 13px; color: #666; margin-top: 4px;">
+      ~280 MB of inlined data; one moment.</div>
+    <div class="bar"></div>
+  </div>
+</div>
 <div id="header-row">
   <h1>FCC Jet Resolution Dashboard</h1>
   <button id="downloadJsonBtn">Download raw JSON data</button>
@@ -811,6 +832,7 @@ function buildPresets() {
 
   // 6. Clustering algorithm: Higgs mass comparison (Durham vs. the radius scans),
   // showing under/over-clustering directly in the mH peak (mirrors slides 19-21).
+  const akMethods = familyMethods("ee_ca");
   if (durhamLike && akMethods.length) {
     const proc = representativeProcess();
     const methods = [durhamLike, ...akMethods];
@@ -2371,6 +2393,11 @@ Plotly.newPlot("mainPlot", [], {margin: {t: 20}}).then(() => {
     applyState(initialState);
   } else {
     redraw();
+  }
+  const ov = document.getElementById("loading-overlay");
+  if (ov) {
+    ov.classList.add("hidden");
+    setTimeout(() => ov.remove(), 400);
   }
 });
 </script>

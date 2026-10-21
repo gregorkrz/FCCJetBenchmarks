@@ -33,6 +33,26 @@ if [[ ! -f "$PLOTS_DIR/dashboard.html" ]]; then
     echo "Warning: $PLOTS_DIR has no dashboard.html - run scripts/create_plots.sh first?" >&2
 fi
 
+if [[ -f "$PLOTS_DIR/dashboard.html" ]]; then
+    # Pre-gzip for the Apache content negotiation on NERSC (see .htaccess).
+    gzip -k9 -f "$PLOTS_DIR/dashboard.html"
+fi
+if [[ ! -f "$PLOTS_DIR/.htaccess" ]]; then
+    cat > "$PLOTS_DIR/.htaccess" <<EOF
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /cfs/m3246/gregork/$REMOTE_SUBDIR/
+  RewriteCond %{HTTP:Accept-Encoding} gzip
+  RewriteCond %{REQUEST_FILENAME}.gz -s
+  RewriteRule ^(.+)\.html\$ \$1.html.gz [L]
+</IfModule>
+<Files "*.html.gz">
+  AddType "text/html" .gz
+  AddEncoding gzip .gz
+</Files>
+EOF
+fi
+
 echo "About to publish:"
 echo "  from: $PLOTS_DIR"
 echo "        ($(find "$PLOTS_DIR" -type f | wc -l) files, $(du -sh "$PLOTS_DIR" | cut -f1); "
@@ -42,7 +62,9 @@ echo "  URL:  $URL_BASE/dashboard.html"
 
 RSYNC_ARGS=(-rtm --chmod=Do+rx,Fo+r -e "ssh -o BatchMode=yes"
             --include="*/"
-            --include="*.html" --include="*.json" --include="*.js" --include="*.css"
+            --include=".htaccess"
+            --include="*.html" --include="*.html.gz"
+            --include="*.json" --include="*.js" --include="*.css"
             --include="*.pdf" --include="*.png" --include="*.jpg" --include="*.jpeg"
             --include="*.gif" --include="*.svg"
             --exclude="*")
