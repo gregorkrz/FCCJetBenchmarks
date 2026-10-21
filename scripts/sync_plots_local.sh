@@ -29,7 +29,7 @@
 set -euo pipefail
 
 HOST=${HOST:-gregork@s3dflogin.slac.stanford.edu}
-REMOTE=${REMOTE:-/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks_histograms/IDEA_20260902_seeded}
+REMOTE=${REMOTE:-/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks_histograms/IDEA_20260902_seeded_v2}
 REPO=${REPO:-/fs/ddn/sdf/group/atlas/d/gregork/fastsim/FCCJetBenchmarks}
 DEST=${DEST:-./fcc_plots}
 

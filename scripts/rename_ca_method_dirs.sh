@@ -18,8 +18,7 @@
 #   DRY_RUN=1 bash scripts/rename_ca_method_dirs.sh "$PATH_TO_HISTOGRAMS"   # show
 #             bash scripts/rename_ca_method_dirs.sh "$PATH_TO_HISTOGRAMS"   # do it
 #
-# Only $PATH_TO_HISTOGRAMS and $PATH_TO_HISTOGRAMS_OLD have these directories;
-# the _nofilter and _nofilter_common trees hold Durham only.
+# Only $PATH_TO_HISTOGRAMS and $PATH_TO_HISTOGRAMS_OLD have these directories.
 set -euo pipefail
 
 TREE="${1:?usage: $0 PATH_TO_HISTOGRAMS}"

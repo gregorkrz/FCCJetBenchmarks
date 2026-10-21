@@ -27,7 +27,7 @@ param(
     [string]$SshHost = "s3dflogin.slac.stanford.edu",
     [string]$User    = "gregork",
     [string]$Dest    = ".\fcc_plots",
-    [string]$Remote  = "/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks_histograms/IDEA_20260902_seeded",
+    [string]$Remote  = "/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks_histograms/IDEA_20260902_seeded_v2",
     [string]$Repo    = "/fs/ddn/sdf/group/atlas/d/gregork/fastsim/FCCJetBenchmarks"
 )
 

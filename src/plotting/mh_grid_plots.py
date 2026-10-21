@@ -31,6 +31,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import ROOT  # end-to-end pass rate reads h_mH_common_reco from the per-process ROOT
+
+ROOT.gROOT.SetBatch(True)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.process_config import (  # noqa: E402
@@ -56,7 +59,7 @@ EXPONENTS = [
          color="#2A9D8F", cmap=plt.cm.GnBu, cmap_range=(0.40, 0.92)),
     dict(p=0, family="ee-ca", family_er="ee-ca-er", tag="0", label="ee-C/A",
          color="#7A3CBF", cmap=plt.cm.Purples, cmap_range=(0.40, 0.90)),
-    dict(p=1, family="ee-kt", family_er="ee-kt-er", tag="p1", label=r"ee-$k_T$",
+    dict(p=1, family="ee-kt", family_er="ee-kt-er", tag="p1", label=r"$k_T$",
          color="#D18B00", cmap=plt.cm.YlOrBr, cmap_range=(0.35, 0.90)),
 ]
 
@@ -103,33 +106,20 @@ def load_mass(input_dir, method):
 
 
 def pass_rate(input_dir, method, process):
-    """Fraction of events surviving the fully-matched-jets filter, or None.
-
-    Written per (method, process) by histmaker.py as basic_stats_<process>.pkl.
-    Shown in the legend because it varies enormously across the radius scan -
-    at large R an inclusive 6-jet event merges into fewer jets and the filter
-    keeps ~1% of events, so a curve can look reasonable while resting on almost
-    no statistics.
-    """
-    path = os.path.join(input_dir, method, f"basic_stats_{process}.pkl")
+    """End-to-end pass rate: h_mH_common_reco entries / all generated events."""
+    path = os.path.join(input_dir, method, f"{process}.root")
+    if not os.path.isfile(path):
+        return None
     try:
-        with open(path, "rb") as fh:
-            stats = pickle.load(fh)
-        before = stats["before_filtering"]
-        return stats["after_filtering"] / before if before > 0 else None
+        f = ROOT.TFile.Open(path)
+        tot_h = f.Get("h_mH_stable_gt_particles")
+        tot = int(tot_h.GetEntries()) if tot_h else 0
+        rec_h = f.Get("h_mH_common_reco")
+        rec = int(round(rec_h.Integral(2, rec_h.GetNbinsX() + 1))) if rec_h else 0
+        f.Close()
+        return rec / tot if tot > 0 else None
     except Exception:
         return None
-
-
-def window_area(entry):
-    """Fraction of the (full-range-normalized) distribution inside MH_XLIM."""
-    x = np.asarray(entry["x_vals_reco"], dtype=float)
-    y = np.asarray(entry["y_vals_reco"], dtype=float)
-    if x.size < 2:
-        return 0.0
-    width = x[1] - x[0]
-    m = (x >= MH_XLIM[0]) & (x < MH_XLIM[1])
-    return float((y[m] * width).sum())
 
 
 def step_hist(ax, entry, label, color, linestyle, normalize="full"):
@@ -164,7 +154,7 @@ def new_grid():
     return fig, ax
 
 
-def finish_grid(fig, ax, title, normalize="full"):
+def finish_grid(fig, ax):
     for row in range(ax.shape[0]):
         for col in range(ax.shape[1]):
             a = ax[row, col]
@@ -176,12 +166,7 @@ def finish_grid(fig, ax, title, normalize="full"):
             a.grid()
             a.legend(fontsize=4.0, loc="lower left", framealpha=0.85,
                      borderpad=0.3, labelspacing=0.25, handlelength=1.6)
-    note = ("legend: (pass rate | % of the distribution inside this window).  "
-            + ("curves normalized to unit area over the full 0-250 GeV range"
-               if normalize == "full"
-               else "curves renormalized to unit area inside this window"))
-    fig.suptitle(title + "\n" + note, fontsize=11)
-    fig.tight_layout(rect=(0, 0, 1, 0.975))
+    fig.tight_layout()
 
 
 def draw_panels(ax, curves, input_dir, normalize="full"):
@@ -211,15 +196,11 @@ def draw_panels(ax, curves, input_dir, normalize="full"):
                 dropped.append(f"{method} from {process} (R={radius} > "
                                f"{MAX_RADIUS_FOR_6JETS} in a 6-jet panel)")
                 continue
-            # Legend carries this method's filter pass rate *for this process*,
-            # so a curve resting on 1% of the events is visibly flagged.
-            # Two bracketed numbers: the fully-matched-jets filter pass rate,
-            # and the fraction of the full-range-normalized distribution that is
-            # visible in this window (see step_hist).
+            # Legend: "<method label>: <end-to-end pass rate>%".
             rate = pass_rate(input_dir, method, process)
-            bits = [] if rate is None else [f"{rate:.2f}"]
-            bits.append(f"{window_area(data[process]) * 100:.0f}%")
-            step_hist(a, data[process], f"{label} ({' | '.join(bits)})",
+            legend_label = (f"{label}: {rate * 100:.1f}%"
+                            if rate is not None else label)
+            step_hist(a, data[process], legend_label,
                       color, linestyle, normalize)
             drawn = True
         if not drawn:
@@ -318,10 +299,7 @@ def main(argv=None):
                                    rgba_to_hex(e["cmap"](shades[i])), "-"))
                 fig, ax = new_grid()
                 all_dropped += draw_panels(ax, curves, input_dir, args.normalize)
-                finish_grid(fig, ax,
-                            f"$m_H$ per process - {e['label']}{er_label} radius "
-                            f"scan ($p = {fmt_p(e['p'])}$), vs Durham",
-                            args.normalize)
+                finish_grid(fig, ax)
                 path = os.path.join(
                     output_dir, f"mH_grid_exponent_p{e['tag']}{suffix}.pdf")
                 fig.savefig(path)
@@ -344,10 +322,7 @@ def main(argv=None):
                                    e["color"], "-"))
                 fig, ax = new_grid()
                 all_dropped += draw_panels(ax, curves, input_dir, args.normalize)
-                finish_grid(fig, ax,
-                            f"$m_H$ per process - the three exponents"
-                            f"{er_label} at $R = {radius:.1f}$, vs Durham",
-                            args.normalize)
+                finish_grid(fig, ax)
                 path = os.path.join(
                     output_dir, f"mH_grid_radius_R{radius_to_str(radius)}{suffix}.pdf")
                 fig.savefig(path)

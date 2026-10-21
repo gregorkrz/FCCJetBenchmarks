@@ -1,17 +1,8 @@
 # Properly seeded campaign (per-job Pythia Random:seed, ~3M independent events
-# per process). This is the tree everything now points at.
+# per process). This is the tree everything now points at. _v2 is the current
+# histmaker run on this dataset (fixed H-jet matching, h_mH_common_* in-line).
 export PATH_TO_DATASET=/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260902_seeded
-export PATH_TO_HISTOGRAMS=/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks_histograms/IDEA_20260902_seeded
-# Re-run of the histmaker on the same dataset with the current H-jet matching.
-export PATH_TO_HISTOGRAMS_V2=${PATH_TO_HISTOGRAMS}_v2
-
-# Side trees of the same campaign:
-#   _nofilter        --no-filter-fully-matched, used by the mH decomposition so
-#                    every rung sits on the same event sample
-#   _nofilter_common additionally carries h_mH_common_* (both jet definitions in
-#                    one event loop -> the common-event-sample figures)
-export PATH_TO_HISTOGRAMS_NOFILTER=${PATH_TO_HISTOGRAMS}_nofilter
-export PATH_TO_HISTOGRAMS_COMMON=${PATH_TO_HISTOGRAMS}_nofilter_common
+export PATH_TO_HISTOGRAMS=/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks_histograms/IDEA_20260902_seeded_v2
 
 # Second independent 3M-per-process campaign (disjoint seed range, meant to be
 # merged with the first for double statistics).

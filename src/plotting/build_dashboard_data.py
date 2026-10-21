@@ -361,17 +361,25 @@ def main():
         shutil.rmtree(full_hist_dir)
     url_prefix = os.path.relpath(full_hist_dir, os.path.dirname(output_path)) + "/"
 
+    import time as _time
+    _t0 = _time.time()
+
+    def _log(msg):
+        print(f"[{_time.time() - _t0:7.1f}s] {msg}", flush=True)
+
     all_processes = set()
     methods_out = {}
-    for method_name, pkl_path in methods:
-        print("Loading dashboard data for method:", method_name)
+    n_meth = len(methods)
+    for i, (method_name, pkl_path) in enumerate(methods, 1):
+        t_m = _time.time()
+        _log(f"[{i}/{n_meth}] loading {method_name}")
         with open(pkl_path, "rb") as fh:
             data = pickle.load(fh)
         all_processes.update(data.keys())
 
         mass_data = load_mass_data(args.inputDir, method_name)
         if mass_data is not None:
-            print("  + Higgs mass dashboard data for method:", method_name)
+            _log(f"[{i}/{n_meth}] + mass data ({len(mass_data)} proc) for {method_name}")
             for process, mass_entry in mass_data.items():
                 data.setdefault(process, {})["mass"] = mass_entry
 
@@ -394,6 +402,7 @@ def main():
             "radius": radius,
             "processes": light_data,
         }
+        _log(f"[{i}/{n_meth}] done {method_name} in {_time.time() - t_m:.1f}s")
 
     process_meta = {}
     for process in sorted(all_processes):
@@ -413,9 +422,9 @@ def main():
 
     stats = load_stats(args.inputDir)
     if stats is not None:
-        print("Loaded basic_stats_summary.json")
+        _log("loaded basic_stats_summary.json")
     else:
-        print(f"No {STATS_JSON_RELPATH} found under {args.inputDir}; Statistics tab will be empty.")
+        _log(f"no {STATS_JSON_RELPATH} under {args.inputDir}; Statistics tab will be empty.")
 
     output = {
         "methods": methods_out,
@@ -423,10 +432,10 @@ def main():
         "stats": stats or {},
     }
 
+    _log(f"serializing JSON ({len(methods_out)} methods, {len(process_meta)} processes) -> {output_path}")
     with open(output_path, "w") as fh:
         json.dump(output, fh)
-
-    print("Saved consolidated dashboard data to:", output_path)
+    _log(f"wrote {os.path.getsize(output_path) / 1024 / 1024:.1f} MB")
     print(f"Methods: {len(methods_out)}, Processes: {len(process_meta)}")
 
     if os.path.isdir(full_hist_dir):

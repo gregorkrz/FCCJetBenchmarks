@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
-# Publish a plots directory to the public site (S3 + CloudFront invalidation).
+# Publish a plots directory to the NERSC web portal (project m3246, user gregork).
 #
 #   source env.sh && bash publish_plots.sh              # $PATH_TO_HISTOGRAMS/plots
 #   bash publish_plots.sh /path/to/other/plots          # explicit directory
 #   DRY_RUN=1 bash publish_plots.sh                     # show what would sync
-#   PRUNE=1 bash publish_plots.sh                       # also delete remote-only objects
 #
-# This overwrites what is live at the CloudFront URL in the README, so it prints
-# what it is about to do and waits for confirmation (skip with FORCE=1).
+# Served from the project CFS www/ dir:
+#   dtn:/global/cfs/cdirs/m3246/www/gregork/fccjetbenchmarks/
+#   https://portal.nersc.gov/cfs/m3246/gregork/fccjetbenchmarks/dashboard.html
 #
-# By default the sync only adds and overwrites: objects that exist remotely but
-# not locally are left alone. That is the safe default, but it means a *rename*
-# leaves the old names live alongside the new ones - e.g. the comparison_AK/ and
-# *_vs_AntiKt*.pdf paths from before the e+e- Cambridge/Aachen relabelling. Use
-# PRUNE=1 to add --delete and clear them out.
+# Only the plots tree is synced -- raw histograms are not published.
+# The sync does not --delete: files removed locally remain on NERSC.
+#
+# Auth: SSH key at ~/.ssh/nersc (sshproxy cert, valid 24 h). Refresh with
+# `sshproxy -u gregork` (interactive). Expired key shows as "Permission denied
+# (publickey)" or "Too many authentication failures".
+#
+# Portal only serves world-readable files in world-executable dirs, so
+# --chmod=Do+rx,Fo+r is set and -a/-p are deliberately NOT used.
 set -euo pipefail
 
 PLOTS_DIR="${1:-${PATH_TO_HISTOGRAMS:?set PATH_TO_HISTOGRAMS or pass a directory}/plots}"
-BUCKET="s3://gregor-research/FCCJetBenchmarks/"
-DISTRIBUTION_ID="E268ANYYX3SEJZ"
+DEST="${NERSC_WWW_DEST:-dtn:/global/cfs/cdirs/m3246/www/gregork}"
+REMOTE_SUBDIR="${NERSC_REMOTE_SUBDIR:-fccjetbenchmarks}"
+URL_BASE="https://portal.nersc.gov/cfs/m3246/gregork/${REMOTE_SUBDIR}"
 
 if [[ ! -d "$PLOTS_DIR" ]]; then
     echo "No such directory: $PLOTS_DIR" >&2
@@ -32,16 +37,18 @@ echo "About to publish:"
 echo "  from: $PLOTS_DIR"
 echo "        ($(find "$PLOTS_DIR" -type f | wc -l) files, $(du -sh "$PLOTS_DIR" | cut -f1); "
 echo "         dashboard.html $(date -r "$PLOTS_DIR/dashboard.html" '+%Y-%m-%d %H:%M' 2>/dev/null || echo 'missing'))"
-echo "  to:   $BUCKET  (CloudFront $DISTRIBUTION_ID)"
+echo "  to:   $DEST/$REMOTE_SUBDIR/"
+echo "  URL:  $URL_BASE/dashboard.html"
 
-SYNC_ARGS=()
-if [[ "${PRUNE:-0}" == "1" ]]; then
-    SYNC_ARGS+=(--delete)
-    echo "  PRUNE=1: objects that exist only remotely will be DELETED"
-fi
+RSYNC_ARGS=(-rtm --chmod=Do+rx,Fo+r -e "ssh -o BatchMode=yes"
+            --include="*/"
+            --include="*.html" --include="*.json" --include="*.js" --include="*.css"
+            --include="*.pdf" --include="*.png" --include="*.jpg" --include="*.jpeg"
+            --include="*.gif" --include="*.svg"
+            --exclude="*")
 
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    aws s3 sync --dryrun "${SYNC_ARGS[@]}" "$PLOTS_DIR" "$BUCKET"
+    rsync --dry-run "${RSYNC_ARGS[@]}" "$PLOTS_DIR/" "$DEST/$REMOTE_SUBDIR/"
     exit 0
 fi
 if [[ "${FORCE:-0}" != "1" ]]; then
@@ -49,5 +56,9 @@ if [[ "${FORCE:-0}" != "1" ]]; then
     [[ "$reply" == "y" || "$reply" == "Y" ]] || { echo "Aborted."; exit 1; }
 fi
 
-aws s3 sync "${SYNC_ARGS[@]}" "$PLOTS_DIR" "$BUCKET"
-aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"
+rsync "${RSYNC_ARGS[@]}" "$PLOTS_DIR/" "$DEST/$REMOTE_SUBDIR/"
+
+echo
+echo "Published:"
+echo "  Dashboard: $URL_BASE/dashboard.html"
+echo "  Verify:    curl -s -o /dev/null -w '%{http_code}' $URL_BASE/dashboard.html"

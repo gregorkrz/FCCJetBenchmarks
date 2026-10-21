@@ -22,7 +22,7 @@ param(
     [string]$SshHost   = "sdfiana005",
     [string]$Dest      = ".\fcc_plots",
     [string]$RemoteTar = "/tmp/fcc_plots_sync.tar",
-    [string]$Remote    = "/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks_histograms/IDEA_20260902_seeded",
+    [string]$Remote    = "/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks_histograms/IDEA_20260902_seeded_v2",
     [string]$Repo      = "/fs/ddn/sdf/group/atlas/d/gregork/fastsim/FCCJetBenchmarks"
 )
 

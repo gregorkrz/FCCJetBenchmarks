@@ -22,15 +22,12 @@ parser.add_argument(
 parser.add_argument(
     "--jet-algorithm",
     type=str,
-    choices=["Durham", "AK", "EEAK", "EEAKT", "EECA", "EEKT", "CaloJetDurham"],
+    choices=["Durham", "AK", "EEAKT", "EECA", "EEKT", "CaloJetDurham"],
     default="Durham",
     help="Jet algorithm to use. Durham = exclusive ee-kT to NUMBER_OF_JETS jets; "
     "EEAKT / EECA / EEKT = inclusive generalized e+e- clustering with exponent "
     "-1 (anti-kT) / 0 (Cambridge/Aachen) / +1 (kT); AK = hadron-collider "
-    "anti-kT; CaloJetDurham = jets read from the Delphes CaloJetDurham branch. "
-    "NB EEAK (no trailing T) is a deprecated alias for EECA, not for EEAKT: it "
-    "never passed an exponent, so it ran Cambridge/Aachen. See "
-    "EE_GENKT_EXPONENT in src/histmaker_tools/jets.py.",
+    "anti-kT; CaloJetDurham = jets read from the Delphes CaloJetDurham branch.",
 )
 parser.add_argument(
     "--AK-radius",
@@ -74,13 +71,6 @@ if "--" in sys.argv:
     args = parser.parse_args(argv_after_sep)
 else:
     args = parser.parse_args()
-
-if args.jet_algorithm == "EEAK":
-    print(
-        "NOTE: --jet-algorithm EEAK is deprecated; it is an alias for EECA, i.e. "
-        "e+e- Cambridge/Aachen (exponent 0) - which is what EEAK always ran, "
-        "since the exponent argument was never passed. Output is unchanged."
-    )
 
 inputDir = args.input
 print("Using input dir:", inputDir)
