@@ -107,6 +107,7 @@ fccanalysis run src/histmaker.py
 
 ```bash
 bash scripts/create_plots.sh $PATH_TO_HISTOGRAMS
+python scripts/jet_algorithm_pass_rate_tables.py $PATH_TO_HISTOGRAMS --r 08 --per-n
 ```
 
 The `create_plots.sh` script computes energy resolution plots and produces detailed plots of different jet-level

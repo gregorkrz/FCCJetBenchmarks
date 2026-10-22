@@ -56,8 +56,6 @@ if [[ "$HTML_ONLY" == false ]]; then
 
         echo "Processing method: $METHOD_NAME"
 
-        #fccanalysis plots src/plotting/debugging_plots.py -- \
-        #    --inputDir "$METHOD_DIR"
 
         python src/plotting/extract_resolution_data.py \
             --inputDir "$METHOD_DIR"
