@@ -67,7 +67,7 @@ def output_root_of(slurm_path):
     # The histmaker command sits inside `/bin/sh -c '...'`, and --only-dataset is
     # its last token, so a bare \S+ swallows the closing shell quote. Strip any
     # quoting before using these as path components: getting this wrong makes
-    # every run look missing and silently re-packs the whole campaign.
+    # every run look missing and silently re-packs the whole dataset.
     method_dir = os.path.basename(out.group(1).strip("'\"").rstrip("/"))
     process_name = process.group(1).strip("'\"")
     return os.path.join(HIST, method_dir, process_name + ".root")

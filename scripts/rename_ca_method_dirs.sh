@@ -1,24 +1,8 @@
 #!/usr/bin/env bash
-# Rename the mislabelled "AntiKt" method directories to the algorithm actually run:
-# e+e- Cambridge/Aachen.
-#
-# Until 2026-09, src/histmaker_tools/jets.py built the radius scan with
-#
-#     JetClustering::clustering_ee_genkt(R, 0, 0, 0)
-#
-# but that constructor is (radius, exclusive, cut, sorted, recombination=0,
-# exponent=0.). Only four arguments were passed, so the exponent fell back to 0,
-# which is Cambridge/Aachen - not anti-kT (-1). The histograms are correct and
-# unchanged; only the name was wrong. No histmaker re-run is needed, just the
-# plotting stages that key off directory names.
-#
-# Per-method pickles live *inside* each method directory and embed no method name
-# or path, so a plain mv carries them along.
-#
-#   DRY_RUN=1 bash scripts/rename_ca_method_dirs.sh "$PATH_TO_HISTOGRAMS"   # show
-#             bash scripts/rename_ca_method_dirs.sh "$PATH_TO_HISTOGRAMS"   # do it
-#
-# Only $PATH_TO_HISTOGRAMS and $PATH_TO_HISTOGRAMS_OLD have these directories.
+# Rename the mislabelled PF_AntiKtR* directories to PF_EECambridgeR* (and the
+# _E_recovery_ variants). The histograms are unchanged; only the name was wrong.
+#   DRY_RUN=1 bash scripts/rename_ca_method_dirs.sh "$PATH_TO_HISTOGRAMS"
+#             bash scripts/rename_ca_method_dirs.sh "$PATH_TO_HISTOGRAMS"
 set -euo pipefail
 
 TREE="${1:?usage: $0 PATH_TO_HISTOGRAMS}"
@@ -80,6 +64,4 @@ output carrying the old names has to go first, or it will linger next to the new
   python src/plotting/make_interactive_dashboard.py --data "$TREE"/plots/dashboard_data.json
   PATH_TO_HISTOGRAMS="$TREE" python src/plotting/presentation_jer_plots.py
 
-Publishing: publish_plots.sh syncs without --delete by default, so the
-old-named objects would remain on the live site. Use PRUNE=1 to add --delete.
 EOF

@@ -1,39 +1,4 @@
-"""Decompose the reconstructed Higgs-mass peak into its contributions.
-
-The production mH figures show *how wide* the peak is, not *why*. This script
-overlays a nested ladder of mH definitions, one panel per process, in the same
-3x5 grid as the JER "full plots" slides:
-
-    Visible final-state     the visible final-state gen particles from the H. What it
-    particles               lacks is the invisible loss (neutrinos from semileptonic
-                            heavy-flavour decays); the H natural width is zero here.
-    Jet def.                gen jets with gen momenta: the cost of partitioning the
-                            event into jets with a perfect detector. Mixes QCD
-                            radiation crossing between the H and Z systems
-                            (irreducible) with the clustering convention (Durham,
-                            exclusive N, the dR matching radius).
-    Detector                each gen particle replaced by its RecoMCLink partner:
-                            efficiency, |eta| < 2.56 acceptance, smearing. No jets, so
-                            no assignment error can enter.
-    Detector + Jet def.     both of the above - gen jets whose constituents are
-                            replaced by their reco partners (PF_Durham_IdealMatching).
-    ... + Reco-jet          the reco particles themselves are clustered into jets and
-    clustering              the H jets found by dR matching (PF_Durham) - the standard
-                            reco mH. Undefined when the matching fails, so unlike the
-                            others it sits on a subset of the events.
-
-All four come out of the histmaker (1000 bins, 0-250 GeV), so this script only
-reads and draws them - see VARIANTS below for the provenance of each curve. The
-histograms are read straight out of the histmaker ROOT files with uproot (no
-ROOT/container needed, and unlike the dashboard JSON this keeps the raw entry
-counts, which are needed for the kept-fraction column).
-
-Usage:
-    source env.sh
-    python src/plotting/mh_decomposition_plots.py
-    python src/plotting/mh_decomposition_plots.py --rebin 4
-    python src/plotting/mh_decomposition_plots.py --inputDir <subset>
-"""
+"""Overlay the nested ladder of mH gen/reco variants, one panel per process (3x5 grid)."""
 import argparse
 import csv
 import os

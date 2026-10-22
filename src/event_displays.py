@@ -1,20 +1,4 @@
-"""Stage 1 of the event displays: pick events in three mH windows and dump them.
-
-The mH decomposition figures show a broad "Physics" curve - `h_mH_gen`, the
-Higgs mass from *gen* jets built out of stable gen particles, i.e. a perfect
-detector, so its width is entirely a jet-definition / jet-assignment effect.
-This script selects events far below, at, and far above that curve's peak and
-writes out everything needed to draw them, so the tails can be inspected event
-by event.
-
-Nothing under $PATH_TO_HISTOGRAMS can be used for this: those files hold only
-TH1Ds. The clustering has to be redone from the source EDM4hep files, which is
-why this stage needs the container (ROOT + FCCAnalyses) while the drawing stage
-(src/plotting/event_display_plots.py) is plain matplotlib.
-
-Usage (inside the container, see scripts/make_event_displays.sh):
-    python src/event_displays.py --max-files 2 --n-per-window 20
-"""
+"""Pick events in three mH windows and dump their constituents for the display stage."""
 import argparse
 import os
 import pickle

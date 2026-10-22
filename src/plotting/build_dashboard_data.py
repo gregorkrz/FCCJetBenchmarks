@@ -1,23 +1,4 @@
-"""Stage 3 of the resolution pipeline (no ROOT, no fitting — pure packaging).
-
-Walks a top-level histogram directory containing one subfolder per jet
-clustering method (e.g. `PF_Durham`, `CaloJets_Durham`, `PF_EECambridgeR08`, `PF_EEKtR08`, `PF_EEAntiKtR08`, ...),
-loads each method's `plots_resolution/resolution_dashboard_data.pkl`
-(produced by `resolution_plots.py`) and `plots_mass/mass_dashboard_data.pkl`
-(produced by `mass_plots.py`), and consolidates everything for
-`make_interactive_dashboard.py` into:
-
-- `dashboard_data.json`: the light, downsampled data that gets inlined into
-  dashboard.html itself. Every full-resolution histogram
-  (`_extract_full_histograms`) is replaced by a `"full_url"` pointer.
-- `full_hist/...json`: one small JSON file per full-resolution histogram
-  (one per energy/angle/eta/costheta bin, one per mass definition), so
-  dashboard.html can fetch, on demand, only the exact histogram the user
-  clicks on instead of the entire full-resolution dataset.
-
-Usage:
-    python src/plotting/build_dashboard_data.py --inputDir $PATH_TO_HISTOGRAMS
-"""
+"""Consolidate per-method resolution/mass pickles into dashboard_data.json + full_hist/*.json."""
 import argparse
 import json
 import os

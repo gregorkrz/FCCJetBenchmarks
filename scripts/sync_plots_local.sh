@@ -1,31 +1,7 @@
 #!/usr/bin/env bash
-# Download the current figures from S3DF.
-#
-# Run on your own machine, not on S3DF. Works from Git Bash, WSL, macOS and
-# Linux. Asks for your password once.
-#
+# Download the current figures from S3DF into $DEST (default ./fcc_plots).
 #   bash sync_plots_local.sh              # into ./fcc_plots
 #   DEST=~/talks bash sync_plots_local.sh
-#
-# Uses s3dflogin.slac.stanford.edu: reachable from outside SLAC, and mounts the
-# same Lustre filesystem as the compute nodes. Do not put an sdfiana* name here.
-# Those resolve only inside SLAC and need a ProxyJump, which is why a Host alias
-# that works in one shell fails in another.
-#
-# Everything is fetched over a single ssh connection: the remote side stages the
-# files under the names we want and streams one tar. With password auth, the
-# alternative is one prompt per file.
-#
-# Two Windows-specific hazards, both handled below.
-#
-# Git Bash rewrites any argument that looks like a Unix path into a Windows path
-# before passing it to ssh.exe, so the remote paths cannot travel as arguments.
-# They are substituted into the script text instead, which goes over stdin and
-# is left alone. Getting this wrong makes every remote cp fail silently and the
-# archive unpacks to three empty directories.
-#
-# The tar is base64-encoded in transit, because not every shell passes binary
-# through a pipe unchanged. It costs 33% on an 8 MB transfer.
 set -euo pipefail
 
 HOST=${HOST:-gregork@s3dflogin.slac.stanford.edu}

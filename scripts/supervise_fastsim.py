@@ -1,25 +1,4 @@
-"""Keep the fastsim generation topped up until every process reaches an event goal.
-
-Runs in a loop (default: every 10 minutes) and each round
-
-  1. counts the *usable* events per process by opening every output file (a job
-     killed mid-run by Delphes' `TrkUtil::CovSmear` abort still leaves a readable,
-     partial file; a job killed by the OOM reaper leaves an unreadable one),
-  2. submits any job file that was generated but never accepted by slurmctld
-     (submitting 1500 sbatch calls in a tight loop gets throttled),
-  3. generates and submits new jobs for whichever processes are still short,
-  4. moves on to the next phase once the current one's processes all reach the
-     goal.
-
-Retries always use a *fresh* job index, never the index of a job that died. The
-Pythia seed is derived from the index (see run_fastsim.py), so re-running a
-crashed index would regenerate the identical events and hit the identical crash.
-
-Usage:
-    source env.sh
-    python scripts/supervise_fastsim.py --dataset $PATH_TO_DATASET_NEW --once
-    setsid nohup python scripts/supervise_fastsim.py --dataset ... &
-"""
+"""Poll output counts and resubmit fastsim jobs until each process reaches its event goal."""
 import argparse
 import glob
 import json

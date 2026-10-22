@@ -1,27 +1,4 @@
-"""Regenerate the presentation's JER figures with a chosen energy-dependence fit.
-
-The slides ("Jet Energy Resolution (Durham PF)", the 5x3 "full plots" grids, the
-per-flavour overlays) all show the production `three_param` fit
-`S/sqrt(E) + C + N/E`. This script redraws the same figures with any fit model
-stored in `dashboard_data.json`; the default is `logE_4param_weighted`
-(`S/sqrt(E) + C + N/E + D*log(E)`, stat-error weighted) - the best-generalising
-form found by the `fit_trials/` study (leave-one-out CV MAE 6.5e-4 vs 2.0e-3 for
-the production fit; see fit_trials/README.md).
-
-No ROOT access or refitting is needed: `build_dashboard_data.py` already stores
-every candidate fit (popt, curve, popt_err, chi2/ndf) per method x process, so
-this only reads the JSON and draws.
-
-Also emits the two Higgs-mass overlays (b-jet / light-flavour final states) as
-single-panel figures, since they belong in the same slide set - the fit model
-does not affect those.
-
-Usage:
-    source env.sh
-    python3 src/plotting/presentation_jer_plots.py                  # logE_4param_weighted
-    python3 src/plotting/presentation_jer_plots.py --model three_param
-    python3 src/plotting/presentation_jer_plots.py --list-models
-"""
+"""Redraw the presentation JER + mH figures using any fit model stored in dashboard_data.json."""
 import argparse
 import json
 import os
