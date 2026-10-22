@@ -326,16 +326,6 @@ $k_T$ clusters soft-first and merges most.
 > $e^+e^-$ Cambridge/Aachen. Genuine $e^+e^-$ anti-$k_T$ ($p=-1$) is run separately as
 > `EEAKT` / `PF_EEAntiKtR*`, first produced 2026-09.
 
-A short standalone note on all of this — the distance measures, the exclusive/inclusive
-modes and which method directory each figure label corresponds to — is in
-[`doc/jet_algorithms.tex`](doc/jet_algorithms.tex), and the
-same material in presentable form, with the measures side by side and a diagram of how $p$
-fixes the merge order, is in
-[`doc/clustering_algorithms_slides.tex`](doc/clustering_algorithms_slides.tex).
-The built PDFs are committed next to them ([`doc/jet_algorithms.pdf`](doc/jet_algorithms.pdf),
-[`doc/clustering_algorithms_slides.pdf`](doc/clustering_algorithms_slides.pdf)); rebuild either with
-`pdflatex <file>.tex`.
-
 **Energy recovery (the `-ER` variants)**  
 Similar to https://indico.cern.ch/event/1439509/contributions/6289574/attachments/2997180/5280612/AEConnelly_FCC.pdf,
 the jets are sorted by energy and the expected number of jets with the highest energy is selected first.
