@@ -143,7 +143,7 @@ Unless noted otherwise, q stands for all light quark flavours (u, d, s, c).
 
 ### Dataset in use
 
-Everything in this repository is produced from the **properly seeded campaign**
+Everything in this repository is produced from the dataset at
 
 ```
 /fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260902_seeded
@@ -850,8 +850,6 @@ FCCJetBenchmarks/
 > presets, and check the Statistics tab for fit coefficients, event counts, and filter pass rates. Rebuilt by
 > `scripts/create_plots.sh` (see [Interactive dashboard](#plotting-scripts) below); use `--html-only` to rebuild
 > just the dashboard after a full run.
-
-See [RESULTS.md](RESULTS.md) for the main results obtained with this framework and the provided dataset.
 
 ## Issues, work in progress
 

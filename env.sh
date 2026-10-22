@@ -1,4 +1,4 @@
-# Properly seeded campaign (per-job Pythia Random:seed, ~3M independent events
+# Dataset: per-job Pythia Random:seed, ~3M independent events
 # per process). This is the tree everything now points at. _v2 is the current
 # histmaker run on this dataset (fixed H-jet matching, h_mH_common_* in-line).
 export PATH_TO_DATASET=/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260902_seeded

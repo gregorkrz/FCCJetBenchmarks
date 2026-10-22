@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=5000,
         help="Expected number of events per ROOT file (default: 5000, the "
-             "--events-per-job of the seeded campaign; the older IDEA_20260120 "
+             "--events-per-job of the current dataset; the older IDEA_20260120 "
              "dataset used 50000).",
     )
     parser.add_argument(
