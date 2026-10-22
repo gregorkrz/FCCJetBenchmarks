@@ -239,76 +239,6 @@ The toolkit computes several key performance metrics:
 * **Reconstructed Higgs Mass**: The resolution of the reconstructed Higgs boson mass from jet combinations.
 * **Jet Matching Efficiency**: The fraction of events where all jets are successfully matched between reconstruction and truth.
 
-### Adding new resolution fitting algorithms
-
-`src/plotting/resolution_methods.py` is the single place where per-bin resolution-extraction methods and
-energy/angle-dependence fit models are registered, so new algorithms can be added without touching
-`resolution_plots.py`:
-
-* To add a new way of turning a histogram into a resolution number, write a function with signature
-  `(y, edges, wmin=0.7, wmax=1.2, **kwargs) -> (sigma, low, high, mpv)` (or `None` on failure) and register it:
-  ```python
-  def sigma_my_method(y, edges, wmin=0.7, wmax=1.2, **kwargs):
-      ...
-      return sigma, low, high, mpv
-  SIGMA_METHODS["my_method"] = sigma_my_method
-  ```
-  Then pass `sigma_method="my_method"` where `compute_resolution_for_process(...)` is called.
-
-* To add a new functional form for how the resolution depends on energy/angle, register it in
-  `RESOLUTION_MODELS`:
-  ```python
-  def my_model(E, a, b):
-      return a * E + b
-  RESOLUTION_MODELS["my_model"] = dict(func=my_model, p0=[1.0, 0.0],
-                                        bounds=([-np.inf, -np.inf], [np.inf, np.inf]))
-  ```
-  Then pass `model="my_model"` to `fit_resolution_model(...)`.
-
-`SIGMA_METHODS` and `RESOLUTION_MODELS` are plain dicts (with `add_sigma_method()` / `add_resolution_model()`
-helpers), so both can also be extended from a separate local script without modifying this repo.
-
-The same file also registers `PEAK_FIT_MODELS` (currently `"gaussian"` and `"dscb"`, a double-sided Crystal Ball),
-used by `fit_peak(x_vals, y_vals, model=..., window=...)` to fit the Higgs mass peak in `mass_plots.py`. Add a new
-mH fitting method the same way as above:
-```python
-def my_peak_model(x, ...params):
-    ...
-PEAK_FIT_MODELS["my_peak_model"] = dict(func=my_peak_model, n_params=...)
-```
-Then pass `model="my_peak_model"` to `fit_peak(...)`. The fitted `popt`/model name flow straight through to the
-dashboard's Statistics tab and the Higgs mass quantity's fit overlay, with no other code changes needed.
-
-### Output format
-
-The histmaker produces ROOT files containing histograms for each process. Each output directory (corresponding to a jet algorithm) contains:
-- One ROOT file per process (e.g., `p8_ee_ZH_6jet_ecm240.root`)
-- Each ROOT file contains various histograms of jet-level and event-level observables
-
-The plotting scripts generate the following folders for each jet clustering method:
-- **`plots_debug/`**: Basic diagnostic plots (optional)
-- **`plots_resolution/`**: Jet energy and angular resolution plots, plus `resolution_histograms.pkl`
-  (raw per-bin histograms, from `extract_resolution_data.py`), `energy_fit_params_per_process.pkl` /
-  `angle_fit_params_per_process.pkl` (consumed by `joint_plots.py`), and `resolution_dashboard_data.pkl`
-  (consumed by `build_dashboard_data.py`; each bin/fit entry carries both a downsampled and a full-resolution
-  copy, the latter split back out into its own file under `full_hist/` rather than inlined in the light JSON)
-- **`plots_mass/`**: Reconstructed Higgs mass distributions, plus `mass_dashboard_data.pkl` (downsampled +
-  full-resolution mH histograms and the Gaussian peak fit, also consumed by `build_dashboard_data.py`)
-
-In addition to this, `print_basic_stats.py --all-folders` writes `basic_stats_summary.json` at the top of
-`$PATH_TO_HISTOGRAMS` (raw event counts + pass rate per process/method), and the summary plots comparing
-different methods, as well as the consolidated `dashboard_data.json`, the per-histogram `full_hist/` folder, and
-the interactive `dashboard.html`, are generated in folder **`plots/`**.
-
-The method directories currently produced are `PF_Durham`, `CaloJets_Durham`, `PF_Durham_IdealMatching`,
-`PF_EECambridgeR{04,06,08,10,12,14}`, `PF_E_recovery_EECambridgeR{04..14}`,
-`PF_EEKtR{04..14}` and `PF_EEAntiKtR{04..14}`.
-(`PF_AntiKtR*` / `PF_E_recovery_AntiKtR*` are the pre-2026-09 names of the Cambridge/Aachen directories; the
-plotting scripts still recognise them as aliases so an un-renamed tree keeps working.) Under `plots/` the
-family comparisons land in `comparison_EECambridge/`, `comparison_EECambridge_energy_recovery/`,
-`comparison_EEKt/` and `comparison_EEAntiKt/`, the cross-exponent $m_H$ grids in `mh_grids/`, and the
-event displays in `event_displays/`.
-
 ## Project Structure
 
 ```
@@ -346,7 +276,6 @@ FCCJetBenchmarks/
 ### Physics-related
 * The jet energy resolution fits don't work well, especially for the calo jets. It should be a good fit in the 2-jet case.
 * 
-
 ### Code-related
 * The slow and messy plotting code needs to be cleaned up.
 * The energy resolution determination (narrowest 68% interval) is somewhat slow as it's written in Python.

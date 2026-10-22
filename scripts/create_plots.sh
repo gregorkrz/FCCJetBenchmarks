@@ -112,6 +112,11 @@ PATH_TO_HISTOGRAMS="$INPUT_DIR" python src/plotting/presentation_jer_plots.py
 python src/plotting/mh_decomposition_plots.py --inputDir "$INPUT_DIR"
 
 # ------------------------------------------------------------------
+# mH radius-scan grids (per $p$, with/without energy recovery).
+# ------------------------------------------------------------------
+python src/plotting/mh_grid_plots.py --inputDir "$INPUT_DIR"
+
+# ------------------------------------------------------------------
 # Event displays for the tails of the mH "Physics" curve (h_mH_gen): 20 events
 # each far below, at, and far above the peak, as one multi-page PDF.
 #
