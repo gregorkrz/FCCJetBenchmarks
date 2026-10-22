@@ -68,8 +68,7 @@ python scripts/find_corrupted_root_files.py $PATH_TO_DATASET --allow-partial \
     --output $PATH_TO_DATASET/corrupted.txt
 ```
 The final sweep removes OOM-killed and other unreadable files, which must happen before the
-histmaker runs (FCCAnalyses opens every input file and aborts on the first bad one). See
-[Dataset generation](#dataset-generation) for Pythia-seed handling and other details.
+histmaker runs (FCCAnalyses opens every input file and aborts on the first bad one).
 
 2. **Run the histmaker:**
 Submit the slurm jobs for each process and each method using the following command:
@@ -150,15 +149,11 @@ Everything in this repository is produced from the dataset at
 ```
 
 which `env.sh` exports as `$PATH_TO_DATASET`. It holds **3.0-3.1 million events per process**,
-33.6 M in total over 6714 files. Every job carries its own Pythia `Random:seed`, so the events are
-statistically independent. See [Random seeds](#random-seeds-important) below.
+33.6 M in total over 6714 files.
 
 | | events / process | files / process |
 | --- | --- | --- |
 | all 11 processes | 3.02 M - 3.14 M | 588 - 623 |
-
-A second campaign of the same size, with a disjoint seed range, sits at `$PATH_TO_DATASET_2`
-(`IDEA_20260903_seeded`). Merge the two to double the statistics.
 
 Available within SLAC S3DF, or on request.
 
@@ -172,51 +167,22 @@ Available within SLAC S3DF, or on request.
 
 ### Dataset generation
 
-```bash
-# Submit the jobs to SLURM
-python scripts/run_fastsim.py --run --output-folder $PATH_TO_DATASET/output --n-jobs 100 --starting-job 0
-```
-
-After the jobs are finished, run the following processing script, which simply moves the files around such that each
-process has its own folder, and the files in the folder are named according to the process they correspond to.
+`scripts/supervise_fastsim.py` submits per-process Fast Sim jobs, tops each process up to the
+event goal, and handles seeds, retries, and partition round-robin automatically:
 
 ```bash
-python scripts/organize_dataset_per_process.py --base PATH_TO_DATASET
-```
-
-#### Random seeds (important)
-
-`run_fastsim.py` writes a **per-job copy of the Pythia card with its own `Random:seed`**
-(`write_seeded_pythia_card`, seed = per-process offset + job index, so a re-run of a job reproduces its
-events). Without it Pythia8 defaults to `Random:setSeed = off` and every job generates the *identical*
-event sequence.
-
-Jobs can die partway: Delphes' `TrkUtil::CovSmear` aborts the process on some events (leaving a short but
-readable file) and 6-jet jobs need ~5.5 GB. Use `--events-per-job 5000` to bound the loss and keep the
-default `--mem 10G`. `scripts/supervise_fastsim.py` automates a campaign - every 10 minutes it counts the
-usable events per process, submits anything that was generated but never accepted by slurmctld, and tops
-up whatever is short until each process reaches a goal:
-
-```bash
-python scripts/make_subset_dataset.py ...        # optional: a small symlinked subset
-setsid nohup python scripts/supervise_fastsim.py --dataset $PATH_TO_DATASET_NEW \
+setsid nohup python scripts/supervise_fastsim.py --dataset $PATH_TO_DATASET \
     --goal 3000000 --max-queued 500 &            # log: <dataset>/supervisor.log
 ```
 
-Retries always use a *fresh* job index: the seed is derived from it, so re-running a crashed index would
-regenerate the same events and hit the same crash. Jobs are spread round-robin over several
-`(account, partition)` pairs, because the node caps are per association (`atlas` gets `node=5` on roma
-but only 1 on milano) - that alone was worth a factor ~4 in throughput. Files whose job was OOM-killed
-are unreadable and must be removed before the histmaker runs (FCCAnalyses opens every input file to
-count entries and aborts on the first bad one):
+After the jobs finish, organize the files by process and sweep OOM-killed / unreadable files
+(the histmaker aborts on the first bad input):
 
 ```bash
-python scripts/find_corrupted_root_files.py $PATH_TO_DATASET_NEW --allow-partial \
-    --output $PATH_TO_DATASET_NEW/corrupted.txt
+python scripts/organize_dataset_per_process.py --base $PATH_TO_DATASET
+python scripts/find_corrupted_root_files.py $PATH_TO_DATASET --allow-partial \
+    --output $PATH_TO_DATASET/corrupted.txt
 ```
-
-`--allow-partial` accepts the legitimately short files from a `TrkUtil` abort and flags only unreadable
-or empty ones.
 
 ### Input file format
 
