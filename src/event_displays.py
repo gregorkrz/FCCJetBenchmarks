@@ -59,7 +59,7 @@ def parse_args(argv=None):
     p.add_argument("--hist", default="h_mH_gen",
                    help="Histogram --windows auto derives the windows from")
     p.add_argument("--jet-algorithm", default="Durham",
-                   choices=["Durham", "AK", "EEAK", "EECA", "EEKT"])
+                   choices=["Durham", "AK", "EECA", "EEKT", "EEAKT"])
     p.add_argument("--AK-radius", type=float, default=-1.0)
     p.add_argument("--jet-matching-radius", type=float, default=0.3)
     p.add_argument("--windows", choices=["default", "auto"], default="default")

@@ -32,7 +32,7 @@ Usage:
     source env.sh
     python src/plotting/mh_decomposition_plots.py
     python src/plotting/mh_decomposition_plots.py --rebin 4
-    python src/plotting/mh_decomposition_plots.py --inputDir <subset> --reco-hist h_mH_reco_fixed
+    python src/plotting/mh_decomposition_plots.py --inputDir <subset>
 """
 import argparse
 import csv
@@ -277,23 +277,6 @@ PFLOW_COMMON_VARIANTS = [
 PFLOW_COMMON_LADDERS = {
     "mH_decomposition_pflow_common": [v["key"] for v in PFLOW_COMMON_VARIANTS]
 }
-
-# --compare-fixed: the same two jet-based curves with the old and the corrected
-# parton -> reco-jet mapping, to size up the indexing bug on identical events.
-FIX_COMPARISON_VARIANTS = [
-    dict(key="ideal_old", label="Ideal matching, old map", method="ideal",
-         hist="h_mH_reco", color="tab:orange", linestyle="-", lw=2.6,
-         note="h_mH_reco: parton->genjet composed with the reco->gen map"),
-    dict(key="ideal_fixed", label="Ideal matching, fixed map", method="ideal",
-         hist="h_mH_reco_fixed", color="darkred", linestyle="--", lw=1.2,
-         note="h_mH_reco_fixed: parton->genjet composed with a true gen->reco map"),
-    dict(key="pf_old", label="PF jets, old map", method="reco",
-         hist="h_mH_reco", color="tab:blue", linestyle="-", lw=2.6,
-         note="h_mH_reco: parton->genjet composed with the reco->gen map"),
-    dict(key="pf_fixed", label="PF jets, fixed map", method="reco",
-         hist="h_mH_reco_fixed", color="navy", linestyle="--", lw=1.2,
-         note="h_mH_reco_fixed: parton->genjet composed with a true gen->reco map"),
-]
 
 
 # ---------------------------------------------------------------------------
@@ -807,7 +790,7 @@ The curves build up the effects one at a time:
 - `Detector + Jet def. + Reco-jet clustering` additionally clusters the reco particles
   themselves and identifies the H jets by dR matching - the standard reco mH. Note this
   bundles particle-level misassignment with the jet matching, which these histograms
-  cannot separate, and the matching also loses events (see caveat 3).
+  cannot separate, and the matching also loses events (see caveat 2).
 ## Figures
 
 {figure_list}
@@ -820,28 +803,13 @@ and the kept fraction for every process x curve.
 {caveats}
 """
 
-MAPPING_CAVEAT_OLD = """1. **H-jet selection index bug** (`src/histmaker_tools/truth_matching.py`, `merge_mappings`
-   in `src/histmaker_functions/functions.h`): the parton->genjet map is composed with the
-   **reco->gen** matching as if it were gen->reco. The selection is correct only where
-   that permutation satisfies pi(g) = pi^-1(g), i.e. for jets sitting in cycles of length
-   <= 2 (identity and pure swaps are fine). A cycle of length >= 3 picks a wrong but
-   same-size jet subset, so the event survives with a wrong mass, typically in the high
-   tail. **The 2-jet (Z->vv) row is provably unaffected**; only the 4-jet and 6-jet rows
-   can be. This affects the two jet-based curves only. Removed by re-running the histmaker
-   (which now also fills `h_mH_reco_fixed`) and passing `--reco-hist h_mH_reco_fixed`."""
-
-MAPPING_CAVEAT_FIXED = """1. The jet-based curves use `{reco_hist}`, i.e. the corrected parton -> reco-jet mapping
-   (a genuine gen->reco greedy matching instead of reusing the reco->gen one), so the
-   H-jet-selection indexing bug does not apply here. Run with `--compare-fixed` to see
-   old vs. fixed side by side on identical events."""
-
-SAMPLE_CAVEAT = """2. **The two jet-based curves come from different files.** Their event samples differ by
+SAMPLE_CAVEAT = """1. **The two jet-based curves come from different files.** Their event samples differ by
    up to {worst:.1%} (worst process: `{worst_process}`), because each method dir applies its
    own fully-matched filter. The two jet-free curves are both taken from the
    `{reco_method}` file so that they at least share its sample. Re-run the two methods
    with `--no-filter-fully-matched` to remove this difference."""
 
-SAMPLE_CAVEAT_OK = """2. The two jet-based curves come from different files, but their event samples agree to
+SAMPLE_CAVEAT_OK = """1. The two jet-based curves come from different files, but their event samples agree to
    {worst:.2%}, so the comparison is effectively apples-to-apples. The two jet-free curves
    are both taken from the `{reco_method}` file."""
 
@@ -868,11 +836,9 @@ def write_readme(output_dir, args, method_dirs, figures, data):
     figure_list = "\n".join(f"- `{name}` - {desc}" for name, desc in figures)
     worst, worst_process = sample_mismatch(data)
     caveats = "\n".join([
-        (MAPPING_CAVEAT_FIXED if "fixed" in args.reco_hist else MAPPING_CAVEAT_OLD).format(
-            reco_hist=args.reco_hist),
         (SAMPLE_CAVEAT_OK if worst < 0.01 else SAMPLE_CAVEAT).format(
             worst=worst, worst_process=worst_process, reco_method=args.reco_method),
-        "3. The jet-based curves are only filled for events in which all Higgs jets were\n"
+        "2. The jet-based curves are only filled for events in which all Higgs jets were\n"
         "   parton-matched; `kept_frac` in the summary table is that fraction. Since every curve\n"
         "   is normalized to unit area, an apparent narrowing when going up the ladder can be\n"
         "   this selection rather than a genuine improvement.",
@@ -888,74 +854,6 @@ def write_readme(output_dir, args, method_dirs, figures, data):
             figure_list=figure_list,
             caveats=caveats,
         ))
-
-
-# ---------------------------------------------------------------------------
-# Old vs. fixed H-jet mapping (--compare-fixed)
-# ---------------------------------------------------------------------------
-
-
-def moved_fraction(old, fixed):
-    """Fraction of entries whose mH changed between the two mappings.
-
-    Both histograms are filled on the same events, so sum|old - fixed| / 2 counts
-    the events whose mass moved between bins. The two maps can also disagree on
-    whether mH is defined at all (they hit `-1` for different events: the old map
-    on unmatched *reco* jets, the fixed one on unmatched *gen* jets), which shows
-    up as a difference in entry count rather than a difference in shape - without
-    the extra term below such an event would only be counted as half a move.
-    """
-    if old is None or fixed is None or old["entries"] <= 0:
-        return float("nan")
-    moved = float(np.abs(old["y"] - fixed["y"]).sum())
-    moved += abs(old["entries"] - fixed["entries"])
-    return moved / 2.0 / old["entries"]
-
-
-def fix_comparison(input_dir, method_dirs, args, processes, output_dir):
-    """Extra figure + table: h_mH_reco vs h_mH_reco_fixed, same events."""
-    print("compare-fixed: h_mH_reco vs h_mH_reco_fixed")
-    data, warnings = collect(input_dir, method_dirs, args.reco_hist, processes,
-                             args.rebin, variants=FIX_COMPARISON_VARIANTS)
-    for w in warnings:
-        print(f"  !! {w}")
-    if not data:
-        print("  !! no h_mH_reco_fixed histograms found, skipping the comparison")
-        return []
-
-    figures = []
-    keys = [v["key"] for v in FIX_COMPARISON_VARIANTS]
-    for suffix, x_range, log_y in (
-        ("", args.zoom_range, False),
-        ("_wide_log", args.wide_range, True),
-    ):
-        name = f"mH_mapping_fix_comparison{suffix}.pdf"
-        fig = fig_grid(data, keys, method_dirs, args.reco_hist, tuple(x_range), log_y,
-                       all_variants=FIX_COMPARISON_VARIANTS)
-        fig.savefig(os.path.join(output_dir, name))
-        plt.close(fig)
-        scale = "log y" if log_y else "linear"
-        figures.append((name, f"old vs fixed H-jet mapping, {x_range[0]:g}-{x_range[1]:g} GeV, {scale}"))
-        print(f"  wrote {os.path.join(output_dir, name)}")
-
-    rows = table_rows(data, variants=FIX_COMPARISON_VARIANTS)
-    for path in write_tables(rows, output_dir, stem="mh_mapping_fix_summary",
-                             title="Old vs. fixed parton -> reco-jet mapping"):
-        print(f"  wrote {path}")
-
-    print("  events whose mH changed with the fixed mapping (entries old -> fixed):")
-    for process in processes:
-        per_variant = data.get(process, {})
-        parts = []
-        for name, old_key, fixed_key in (("PF jets", "pf_old", "pf_fixed"),
-                                         ("ideal", "ideal_old", "ideal_fixed")):
-            old, fixed = per_variant.get(old_key), per_variant.get(fixed_key)
-            frac = moved_fraction(old, fixed)
-            counts = (f"{old['entries']:.0f}->{fixed['entries']:.0f}"
-                      if old and fixed else "n/a")
-            parts.append(f"{name} {frac:7.2%} ({counts})")
-        print(f"    {process:26s} " + "   ".join(parts))
-    return figures
 
 
 # ---------------------------------------------------------------------------
@@ -976,8 +874,7 @@ def main():
     parser.add_argument("--ideal-method", default="PF_Durham_IdealMatching",
                         help="method dir for the ideal-matching (+ Jet definition) curve")
     parser.add_argument("--reco-hist", default="h_mH_reco",
-                        help="jet-based mH histogram name (use h_mH_reco_fixed for a re-run "
-                             "with the corrected H-jet mapping)")
+                        help="jet-based mH histogram name")
     parser.add_argument("--rebin", type=int, default=1,
                         help="merge N adjacent 0.25 GeV bins for drawing (stats stay full-resolution)")
     parser.add_argument("--zoom-range", nargs=2, type=float, default=[90.0, 150.0],
@@ -990,10 +887,6 @@ def main():
                              "mH_jet_multiplicity_zoom.pdf (default: 105 145)")
     parser.add_argument("--processes", nargs="*", default=None,
                         help="subset of processes (default: all in process_config)")
-    parser.add_argument("--compare-fixed", action="store_true",
-                        help="additionally overlay h_mH_reco vs h_mH_reco_fixed per process, "
-                             "sizing up the parton->reco-jet mapping bug on identical events "
-                             "(needs a histmaker run that produced h_mH_reco_fixed)")
     args = parser.parse_args()
 
     input_dir = args.inputDir or default_input_dir()
@@ -1134,9 +1027,6 @@ def main():
 
     for path in write_tables(rows, output_dir):
         print(f"  wrote {path}")
-
-    if args.compare_fixed:
-        figures += fix_comparison(input_dir, method_dirs, args, processes, output_dir)
 
     write_readme(output_dir, args, method_dirs, figures, data)
     print(f"  wrote {os.path.join(output_dir, 'README.md')}")

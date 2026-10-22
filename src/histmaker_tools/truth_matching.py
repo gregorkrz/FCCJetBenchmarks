@@ -67,40 +67,15 @@ def get_Higgs_mass_with_truth_matching(
     )
     df = df.Define(
         "HardP_to_RecoJet_mapping",
-        "FCCAnalyses::ZHfunctions::merge_mappings(HardP_to_GenJet_mapping, reco_gen_jet_matching)",
+        "FCCAnalyses::ZHfunctions::merge_mappings(HardP_to_GenJet_mapping, "
+        "FCCAnalyses::JetTools::greedy_matching({}, {}, {}))".format(
+            genjets_field, recojets_field, matching_radius
+        ),
     )
     df = df.Define(
         "filtered_jets",
         "FCCAnalyses::ZHfunctions::filter_jets({}, HardP_to_RecoJet_mapping)".format(
             recojets_field
-        ),
-    )
-    # The mapping above composes parton->genjet with reco_gen_jet_matching, which
-    # is a reco->gen map, so it only lands on the right reco jet where that
-    # permutation is its own inverse (identity or pure pairwise swaps). A cycle of
-    # length >= 3 picks a wrong (but same-size) jet subset, so the event survives
-    # with a wrong mass. Redo it with a genuine gen->reco matching; greedy
-    # matching isn't symmetric, so run it in that direction rather than inverting.
-    df = df.Define(
-        "gen_reco_jet_matching",
-        "FCCAnalyses::JetTools::greedy_matching({}, {}, {})".format(
-            genjets_field, recojets_field, matching_radius
-        ),
-    )
-    df = df.Define(
-        "HardP_to_RecoJet_mapping_fixed",
-        "FCCAnalyses::ZHfunctions::merge_mappings(HardP_to_GenJet_mapping, gen_reco_jet_matching)",
-    )
-    df = df.Define(
-        "filtered_jets_fixed",
-        "FCCAnalyses::ZHfunctions::filter_jets({}, HardP_to_RecoJet_mapping_fixed)".format(
-            recojets_field
-        ),
-    )
-    df = df.Define(
-        "inv_mass_reco_fixed",
-        "FCCAnalyses::ZHfunctions::invariant_mass(filtered_jets_fixed, {})".format(
-            expected_num_jets
         ),
     )
     df = df.Define(
@@ -140,8 +115,7 @@ def get_Higgs_mass_with_truth_matching(
                 expected_num_jets
             ),
         )
-    # Same Higgs-jet selection applied to a second jet collection. Uses its own
-    # gen->reco matching, so the two definitions are treated identically.
+    # Same Higgs-jet selection applied to a second jet collection.
     if alt_recojets_field is not None:
         df = df.Define(
             "gen_altreco_jet_matching",

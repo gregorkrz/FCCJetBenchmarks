@@ -12,28 +12,13 @@
 # jets is bit-identical to Durham for R >~ 0.6 (Durham is the R -> infinity
 # limit), which is why the ee-kT family below is clustered inclusively.
 #
-# HISTORY / BUG: until 2026-09 this file called clustering_ee_genkt with only
-# FOUR arguments, so p silently fell back to the FCCAnalyses default of 0.
-# Every histogram in a PF_AntiKtR* or PF_E_recovery_AntiKtR* directory is
-# therefore e+e- Cambridge/Aachen, NOT anti-kT. Those runs are valid C/A data
-# and were relabelled rather than re-run; the directories are now
-# PF_EECambridgeR*. Always pass the exponent explicitly.
 EE_GENKT_EXPONENT = {
-    "EEAKT": -1.0,  # e+e- anti-kT (genuine; first run 2026-09)
-    "EECA": 0.0,  # e+e- Cambridge/Aachen (what the historical EEAK runs did)
-    "EEKT": 1.0,  # e+e- kT
+    "EEAKT": -1.0,  # e+e- anti-kT
+    "EECA": 0.0,    # e+e- Cambridge/Aachen
+    "EEKT": 1.0,    # e+e- kT
 }
 
-# Accepted --jet-algorithm spellings that map onto clustering_ee_genkt, resolved
-# to the canonical key of EE_GENKT_EXPONENT.
-#
-# CAREFUL: EEAK and EEAKT are NOT the same thing.
-#   EEAK  - the historical name, kept because ~400 job scripts under jobs*/ use
-#           it. It ran with no exponent argument, i.e. p = 0, so it resolves to
-#           EECA (Cambridge/Aachen) and its output is unchanged.
-#   EEAKT - genuine e+e- anti-kT, p = -1.
 EE_GENKT_ALGORITHMS = {
-    "EEAK": "EECA",
     "EECA": "EECA",
     "EEKT": "EEKT",
     "EEAKT": "EEAKT",
@@ -190,8 +175,6 @@ def compute_jets_from_args(df, args, N_jets):
         kwargs["AK_radius"] = args.AK_radius
         assert args.AK_radius > 0
         if args.jet_algorithm in EE_GENKT_ALGORITHMS:
-            # EEAK is the historical spelling and resolves to EECA: those runs
-            # passed no exponent, so they were Cambridge/Aachen all along.
             canonical = EE_GENKT_ALGORITHMS[args.jet_algorithm]
             kwargs["ee_genkt_exponent"] = EE_GENKT_EXPONENT[canonical]
             if EE_GENKT_EXCLUSIVE_N[canonical]:

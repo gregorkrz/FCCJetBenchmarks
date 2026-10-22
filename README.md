@@ -2,11 +2,7 @@
 Jet performance benchmark toolkit using the FCCAnalysis framework.
 
 > [!TIP]
-> ### 📊 [Interactive dashboard](https://d197we12tlgfrq.cloudfront.net/FCCJetBenchmarks/dashboard.html)
-> All results in one browsable page: jet energy and angular resolution, Higgs-mass
-> peaks, one-click comparison presets, and a Statistics tab with fit coefficients,
-> event counts and filter pass rates.
-> **https://d197we12tlgfrq.cloudfront.net/FCCJetBenchmarks/dashboard.html**
+> Detailed IDEA Jet Benchmarks are available [on this link](https://portal.nersc.gov/cfs/m3246/gregork/fccjetbenchmarks/dashboard.html).
 
 ## Overview
 
@@ -60,7 +56,22 @@ source env.sh
 `$PATH_TO_DATASET` points at `IDEA_20260902_seeded`; see [Dataset in use](#dataset-in-use).
 Key4HEP cannot be sourced on a RHEL 8 login node. Use the Singularity container (`shell.sh`) there.
 
-1. **Run the histmaker:**
+1. **Generate the dataset.** `supervise_fastsim.py` submits per-process Fast Sim jobs, tops each
+process up to the event goal, retries anything SLURM dropped, and spreads the work across accounts
+and partitions. After the jobs finish, `organize_dataset_per_process.py` renames and sorts the ROOT
+files into one directory per process:
+```bash
+python scripts/supervise_fastsim.py --dataset $PATH_TO_DATASET \
+    --goal 3000000 --max-queued 500
+python scripts/organize_dataset_per_process.py --base $PATH_TO_DATASET
+python scripts/find_corrupted_root_files.py $PATH_TO_DATASET --allow-partial \
+    --output $PATH_TO_DATASET/corrupted.txt
+```
+The final sweep removes OOM-killed and other unreadable files, which must happen before the
+histmaker runs (FCCAnalyses opens every input file and aborts on the first bad one). See
+[Dataset generation](#dataset-generation) for Pythia-seed handling and other details.
+
+2. **Run the histmaker:**
 Submit the slurm jobs for each process and each method using the following command:
 ```bash
 python scripts/generate_analysis_jobs.py --input $PATH_TO_DATASET --output $PATH_TO_HISTOGRAMS
@@ -88,20 +99,6 @@ Useful flags:
 
 The histmaker scripts produce a ROOT file with histograms for each process and each jet algorithm.
 
-> [!TIP]
-> The `atlas` account has a one-node group limit on `milano`, so submitting ~130 single-process jobs
-> funnels them onto one node and a cluster-side policy culls all but a couple (they die ~40 s in,
-> "CANCELLED by 0"). `scripts/make_batch.py` packs the runs that are still missing into a few wide jobs,
-> each asking for a whole node and running `PER_JOB` histmaker processes in parallel inside it. The
-> command lines are lifted verbatim from the `.slurm` files that `generate_analysis_jobs.py` wrote, so it
-> works for any algorithm family without knowing its directory-naming convention, and it is idempotent —
-> re-running it after preemptions just re-packs whatever is still outstanding:
-> ```bash
-> source env.sh
-> JOBS=$PWD/jobs_kt PER_JOB=12 python scripts/make_batch.py
-> for f in jobs_kt/batch/chunk_*.slurm; do sbatch $f; done
-> ```
-
 To see all the options of the histmaker command, simply run the command without any arguments:
 ```bash
 fccanalysis run src/histmaker.py
@@ -109,7 +106,7 @@ fccanalysis run src/histmaker.py
 
 Instead of running the histmaker, you can also use pre-computed histograms available at https://cernbox.cern.ch/s/QM81dj4GeMWP03Q.
 
-2. **Run the plotting scripts:**
+3. **Run the plotting scripts:**
 
 ```bash
 bash scripts/create_plots.sh $PATH_TO_HISTOGRAMS
@@ -165,12 +162,13 @@ A second campaign of the same size, with a disjoint seed range, sits at `$PATH_T
 
 Available within SLAC S3DF, or on request.
 
-> [!WARNING]
-> Do not use the older trees under `.../jetbenchmarks/`: `IDEA_20251105`, `IDEA_20251114`,
-> `IDEA_20251205`, `IDEA_mod1_20251121`, `IDEA_20260120`. `IDEA_20260120` is exported as
-> `$PATH_TO_DATASET_OLD` and has the unseeded-Pythia defect described below. This README used to
-> point at `IDEA_20251114`, which no script reads.
+### Paths in use
 
+| | path |
+| --- | --- |
+| Dataset (`$PATH_TO_DATASET`) | `/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks/IDEA_20260902_seeded` |
+| Histograms (`$PATH_TO_HISTOGRAMS`) | `/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks_histograms/IDEA_20260902_seeded_v2` |
+| Plots | `$PATH_TO_HISTOGRAMS/plots` (written by `scripts/create_plots.sh $PATH_TO_HISTOGRAMS`) |
 
 ### Dataset generation
 
@@ -192,13 +190,6 @@ python scripts/organize_dataset_per_process.py --base PATH_TO_DATASET
 (`write_seeded_pythia_card`, seed = per-process offset + job index, so a re-run of a job reproduces its
 events). Without it Pythia8 defaults to `Random:setSeed = off` and every job generates the *identical*
 event sequence.
-
-> [!WARNING]
-> The `IDEA_20260120` dataset predates this fix: all ~650 files of a process hold the **same 50k
-> generated events**, differing only in the Delphes smearing (its RNG is not seeded from the card). Its
-> gen-level distributions therefore have the statistical power of 50k events, not 32.5M — measurably so:
-> the bin-to-bin scatter of `h_mH_gen` is √650 ≈ 26 times the Poisson expectation. Reco-level quantities
-> are smooth but still only ~50k independent in anything driven by generator-level physics.
 
 Jobs can die partway: Delphes' `TrkUtil::CovSmear` aborts the process on some events (leaving a short but
 readable file) and 6-jet jobs need ~5.5 GB. Use `--events-per-job 5000` to bound the loss and keep the
@@ -292,19 +283,12 @@ The exponent $p$ selects the algorithm:
 | $p$ | algorithm | `--jet-algorithm` | method directories |
 | --- | --- | --- | --- |
 | $-1$ | $e^+e^-$ anti-$k_T$ | `EEAKT` | `PF_EEAntiKtR{04..14}` |
-| $0$ | $e^+e^-$ Cambridge/Aachen | `EECA` (`EEAK` = deprecated alias) | `PF_EECambridgeR{04..14}`, `PF_E_recovery_EECambridgeR{04..14}` |
+| $0$ | $e^+e^-$ Cambridge/Aachen | `EECA` | `PF_EECambridgeR{04..14}`, `PF_E_recovery_EECambridgeR{04..14}` |
 | $+1$ | $e^+e^-$ $k_T$ | `EEKT` | `PF_EEKtR{04..14}` |
 
 All three families are run **inclusively**, so the number of jets is an output rather
 than an input, and $R$ is scanned over `0.4, 0.6, 0.8, 1.0, 1.2, 1.4` (`RADIUS_SCAN` in
 `src/process_config.py`).
-
-> [!WARNING]
-> `--jet-algorithm EEAK` and `EEAKT` are **not** the same thing. `EEAK` (no trailing
-> `T`) is the historical spelling that never passed an exponent, so it ran $p=0$ and is
-> kept only as a deprecated alias of `EECA`. Genuine anti-$k_T$ is `EEAKT`, and its
-> directories are `PF_EEAntiKtR*` — note the `EE`, which distinguishes them from the
-> legacy `PF_AntiKtR*` C/A directories.
 
 Two properties of the distance measure matter for reading the radius-scan figures:
 
@@ -442,6 +426,13 @@ In addition to `filter_pass_rate_table.md` (and `_clean.md` with `--important-on
 `basic_stats_summary.json` (raw event counts and pass rate, per process/method) at the top of `$PATH_TO_HISTOGRAMS`,
 consumed by `build_dashboard_data.py` for the dashboard's Statistics tab.
 
+Markdown pass-rate tables comparing Durham vs the inclusive e+e- algorithms (anti-kT / C/A / kT),
+with and without energy recovery, over the common sample used by the mH decomposition plots:
+```bash
+python scripts/jet_algorithm_pass_rate_tables.py $PATH_TO_HISTOGRAMS --r 08 --per-n
+```
+`--r` sets R for the fixed-R table; `--per-n` adds a second table where 2j/4j use R=1.4 and 6j uses R=1.0.
+
 The plotting scripts are split into the following steps:
 
 * Basic debugging plots (placed in the subfolder `plots_debug`):
@@ -527,8 +518,8 @@ python src/plotting/mh_decomposition_plots.py --inputDir $PATH_TO_HISTOGRAMS
   shoulder and the low-mass tails - plus `mh_decomposition_summary.md`/`.csv` with $\mu$, $\sigma$, median,
   68% half-width and the fraction of events for which each definition is defined, and a `README.md` recording
   the provenance of every curve. Useful flags: `--rebin N` (merge N of the 0.25 GeV bins for drawing; the
-  quoted numbers always use the full resolution), `--reco-hist h_mH_reco_fixed` and `--compare-fixed`
-  (see below), `--zoom-range`/`--wide-range`, `--processes`.
+  quoted numbers always use the full resolution), `--reco-hist`, `--zoom-range`/`--wide-range`,
+  `--processes`.
 
   Note that the two jet-based curves are only filled for events in which all Higgs jets were successfully
   parton-matched (37% of 6-jet events, 84% of `Z(→νν)H(→bb)`), and that the default fully-matched filter
@@ -854,7 +845,7 @@ FCCJetBenchmarks/
 ## Main results
 
 > [!TIP]
-> **[Open the live interactive dashboard](https://d197we12tlgfrq.cloudfront.net/FCCJetBenchmarks/dashboard.html)** — explore jet
+> **[Open the live interactive dashboard](https://portal.nersc.gov/cfs/m3246/gregork/fccjetbenchmarks/dashboard.html)** — explore jet
 > energy/angular resolution and Higgs mass plots across every process and jet-clustering method, apply one-click
 > presets, and check the Statistics tab for fit coefficients, event counts, and filter pass rates. Rebuilt by
 > `scripts/create_plots.sh` (see [Interactive dashboard](#plotting-scripts) below); use `--html-only` to rebuild
@@ -898,28 +889,6 @@ python scripts/generate_analysis_jobs.py --algos durham,ideal \
 `--jobs-dir` keeps the side run's `.slurm` files away from the production ones in `jobs/`, `--time` shortens
 the SLURM limit, and `--extra-args` appends arbitrary flags to every histmaker command (note the
 `--extra-args=--flag` form: a value starting with `-` has to be attached with `=`).
-
-### The parton -> reco-jet mapping fix
-
-`truth_matching.py` selects the Higgs jets by composing the parton->genjet matching with
-`reco_gen_jet_matching`, which is a **reco->gen** map, so it only lands on the right reco jet where that
-permutation is its own inverse - identity or pure pairwise swaps are fine, a cycle of length >= 3 picks a
-wrong (but same-size) jet subset and the event survives with a wrong mass, typically in the high tail. Two
-jets can never form such a cycle, so 2-jet processes are unaffected; measured on the 6-jet processes, ~2-3%
-of the entries move.
-
-`inv_mass_reco_fixed` / `h_mH_reco_fixed` redo the selection with a genuine gen->reco greedy matching (run in
-that direction rather than inverted, since greedy matching is not symmetric) and are filled alongside the
-original ones, so both can be compared on identical events:
-
-```bash
-python src/plotting/mh_decomposition_plots.py --inputDir ${PATH_TO_HISTOGRAMS}_subset20_nofilter \
-  --reco-hist h_mH_reco_fixed --compare-fixed
-```
-
-This draws the decomposition from the corrected histograms and adds `mH_mapping_fix_comparison*.pdf` plus
-`mh_mapping_fix_summary.md`/`.csv` overlaying old vs. fixed for both methods. The histograms produced before
-this change (i.e. everything currently under `$PATH_TO_HISTOGRAMS`) still use the old mapping.
 
 ### Custom jet matching radius
 
