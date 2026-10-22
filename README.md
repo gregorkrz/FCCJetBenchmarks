@@ -188,31 +188,7 @@ a label, color and line style for plotting.
 ### Jet clustering algorithms
 The supported jet clustering algorithms are implemented using FastJet [1].
 
-**Durham [1]**
-
-Sequential recombination with distance measures
-
-$$d_{ij} = 2 \min(E_i^2, E_j^2) (1 - \cos \theta_{ij}), 
-\qquad
-d_{iB} = E_i^2$$
-
-where $E_i$ is the particle energy and $\theta_{ij}$ is the opening angle.
-Durham is used in exclusive mode, i.e. it stops after finding the desired number of jets.
-
----
-
-**Anti-kt [5]**
-
-Hadron-collider anti-kt distance measure
-
-$$d_{ij} = \min(p_{T,i}^{-2}, p_{T,j}^{-2})
-\frac{\Delta R_{ij}^2}{R^2},
-\qquad
-d_{iB} = p_{T,i}^{-2}$$
-
----
-
-### Generalized $e^+e^-$ algorithms (`ee_genkt`)
+#### Generalized $e^+e^-$ algorithms (`ee_genkt`)
 
 As defined in [1], Section 4.5. Energy–angle version of the generalized $k_T$ family,
 more suitable for $e^+ e^-$ collisions:
@@ -231,46 +207,6 @@ The exponent $p$ selects the algorithm:
 | $0$ | $e^+e^-$ Cambridge/Aachen | `EECA` | `PF_EECambridgeR{04..14}`, `PF_E_recovery_EECambridgeR{04..14}` |
 | $+1$ | $e^+e^-$ $k_T$ | `EEKT` | `PF_EEKtR{04..14}` |
 
-All three families are run **inclusively**, so the number of jets is an output rather
-than an input, and $R$ is scanned over `0.4, 0.6, 0.8, 1.0, 1.2, 1.4` (`RADIUS_SCAN` in
-`src/process_config.py`).
-
-Two properties of the distance measure matter for reading the radius-scan figures:
-
-- $1/(1-\cos R)$ is a global constant and never reorders the $d_{ij}$ among themselves.
-  All $R$ dependence therefore enters through $d_{ij}$ against $d_{iB}$: which particles
-  are split off into their own jet.
-- As $R \to \pi$ the beam term can no longer win, and $p=+1$ becomes Durham. FastJet's
-  `JetDefinition.hh` says "R > 2 and p=1 gives ee_kt". On simulated 6-jet events,
-  exclusive-to-$N$ clustering with $p=+1$ is bit-identical to Durham for $R \gtrsim 0.6$.
-  That is why the $k_T$ family is run inclusively.
-
-Merging gets monotonically more aggressive with increasing $p$. Measured at $R=0.8$ in
-$Z(\to qq)H(\to WW\to qqqq)$ over 10k events:
-
-| $p$ | algorithm | events yielding 6 jets | fully-matched pass rate |
-| --- | --- | --- | --- |
-| $-1$ | anti-$k_T$ | 99.8% | 0.878 |
-| $0$ | Cambridge/Aachen | 98.4% | 0.815 |
-| $+1$ | $k_T$ | 74.4% | 0.611 |
-| — | Durham (exclusive $N$) | 100% by construction | 0.866 |
-
-Anti-$k_T$ clusters hard-first and so barely merges away from the expected multiplicity;
-$k_T$ clusters soft-first and merges most.
-
-> [!IMPORTANT]
-> **Correction (2026-09): the scan formerly called "anti-kt" was Cambridge/Aachen.**
-> Until 2026-09 `src/histmaker_tools/jets.py` built the radius scan with
-> `JetClustering::clustering_ee_genkt(R, 0, 0, 0)` — only four arguments, whereas the
-> constructor is `(radius, exclusive, cut, sorted, recombination=0, exponent=0.)`. The
-> exponent therefore defaulted to `0`, so every one of those runs was
-> **Cambridge/Aachen and never anti-$k_T$**. The histograms are valid C/A data, so they
-> were relabelled rather than re-run, and the directories renamed
-> `PF_AntiKtR*` → `PF_EECambridgeR*` (`scripts/rename_ca_method_dirs.sh`). Any older
-> figure or table showing "ee-AK", "anti-kt" or `AntiKtR` should be read as
-> $e^+e^-$ Cambridge/Aachen. Genuine $e^+e^-$ anti-$k_T$ ($p=-1$) is run separately as
-> `EEAKT` / `PF_EEAntiKtR*`, first produced 2026-09.
-
 **Energy recovery (the `-ER` variants)**  
 Similar to https://indico.cern.ch/event/1439509/contributions/6289574/attachments/2997180/5280612/AEConnelly_FCC.pdf,
 the jets are sorted by energy and the expected number of jets with the highest energy is selected first.
@@ -279,11 +215,6 @@ Available for all three exponents (`ca-er`, `kt-er`, `akt-er`).
 
 Energy recovery keeps the $N$ leading jets and merges the surplus into them. It therefore
 does nothing unless the clustering overproduces, and how much it does depends on $N$.
-
-At $R=0.4$ on $Z(\to\nu\nu)H(\to qq)$ ($N=2$) it moves the $m_H$ peak from 119.9 to 124.9 GeV.
-The result then no longer depends on the radius or the exponent, because the two jets hold every
-visible particle. On the 6-jet processes at $R \ge 0.8$ the clustering already yields $\le N$ jets,
-so energy recovery is the identity.
 
 ### Jet truth definition
 Gen jets are defined by clustering all final-state MC particles (excluding neutrinos) using the same jet algorithm
@@ -303,50 +234,9 @@ For each gen jet, the closest reco jet is selected, provided that $\Delta R < R_
 The toolkit computes several key performance metrics:
 
 * **Jet Energy Resolution (JER)**: The resolution of reconstructed jet energy compared to truth jet energy, typically parameterized as $\sigma_E/E = A \oplus B/\sqrt{E} \oplus C/E$ or $\sigma_E/E = A \oplus C/E$.
-* **Angular Resolution**: The resolution of jet direction (η and φ) compared to truth jets.
+* **Angular Resolution** [Work in progress]: The resolution of jet direction (η and φ) compared to truth jets.
 * **Reconstructed Higgs Mass**: The resolution of the reconstructed Higgs boson mass from jet combinations.
 * **Jet Matching Efficiency**: The fraction of events where all jets are successfully matched between reconstruction and truth.
-
-### Jet Energy and Angular Resolution Parametrization
-
-The jet energy and angular resolutions are parameterized using functional forms that capture the energy-dependent behavior of the resolution. The resolution is computed as the narrowest 68% interval (std68) from the distribution of the relative energy difference $(E_{reco}/E_{true} - 1)$ or angular differences $(\phi_{reco} - \phi_{true})$ and $(\theta_{reco} - \theta_{true})$.
-
-#### Jet Energy Resolution (JER)
-
-The jet energy resolution is parameterized using one of two functional forms, depending on the jet type and analysis needs:
-
-**With confusion term**:
-$$\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus \frac{N}{E}  \oplus C$$
-
-**Without confusion term**:
-$$\frac{\sigma_E}{E} = \frac{S}{\sqrt{E}} \oplus C$$
-
-Where:
-- **S** (stochastic term): Represents the stochastic term proportional to $1/\sqrt{E}$, related to the statistical fluctuations in energy measurement
-- **N** (constant term): Represents the constant term, independent of energy, related to systematic effects (used in 3-parameter fits)
-- **C** (confusion term): Represents the confusion term proportional to $1/E$, related to jet confusion effects
-
-The parameters are fitted using `scipy.optimize.curve_fit` with appropriate bounds to ensure physical values. The fit is performed on resolution values computed in energy bins (typically 0-10, 10-20, 20-30, ..., 90-100 GeV).
-
-We use the three-parameter form for jet energy resolution.
-
-#### Angular Resolution
-
-The angular resolution for $\phi$ (azimuthal angle), $\theta$ (polar angle), and $\eta$ (pseudorapidity)
-are parameterized similarly to jet energy resolution; using the simpler two-parameter form (without the confusion term).
-
-#### Resolution Computation
-
-The resolution values used for fitting are computed as follows:
-
-1. **Energy binning**: Jets are binned according to their true energy $E_{true}$ (typically in 10 GeV bins from 0-100 GeV)
-2. **Distribution construction**: For each energy bin, the distribution of $E_{reco}/E_{true}$ or angular differences is constructed
-3. **Resolution extraction**: The narrowest 68% interval (std68) is computed from each distribution, representing the resolution at that energy
-4. **Fitting**: The resolution values across energy bins are fitted to the parameterization functions
-
-The fitted parameters are displayed in the resolution plots, showing the functional form and parameter values. Example parameter displays:
-- Two-parameter fit: "S=0.45 C=0.02" means $\sigma = 0.45/\sqrt{E} \oplus 0.02$
-- Three-parameter fit: "S=0.45 N=0.03 C=0.01" means $\sigma = 0.45/\sqrt{E} \oplus 0.03 \oplus 0.01/E$
 
 ### Plotting scripts
 
@@ -835,19 +725,6 @@ fccanalysis run src/histmaker.py -- \
   --jet-matching-radius 1.0
 ```
 
-### Anti-kt with energy recovery
-
-To use the *hadron-collider* anti-kt algorithm (`clustering_antikt`, kept for cross-checks only) with energy recovery:
-
-```bash
-fccanalysis run src/histmaker.py -- \
-  --input $PATH_TO_DATASET \
-  --output $PATH_TO_HISTOGRAMS/PF_HadronAntiKtR06_Erecovery \
-  --jet-algorithm AK \
-  --AK-radius 0.6 \
-  --energy-recovery
-```
-
 ### Processing a subset of processes
 
 To process only a specific process:
@@ -883,7 +760,6 @@ fccanalysis run src/histmaker.py -- \
 
 [4] Bierlich, C., Chakraborty, S., Desai, N., Gellersen, L., Helenius, I., Ilten, P., Lönnblad, L., Mrenna, S., Prestel, S., Preuss, C. T., Sjöstrand, T., Skands, P., Utheim, M., & Verheyen, R. (2022). A comprehensive guide to the physics and usage of PYTHIA 8.3. ArXiv. https://arxiv.org/abs/2203.11601
 
-[5] Cacciari, Matteo, et al. “The Anti-K_t Jet Clustering Algorithm.” arXiv:0802.1189, arXiv, 21 Apr. 2008. arXiv.org, https://doi.org/10.48550/arXiv.0802.1189.
 
 ## License
 
