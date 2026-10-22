@@ -1,8 +1,7 @@
 # FCCJetBenchmarks
 Jet performance benchmark toolkit using the FCCAnalysis framework.
 
-> [!TIP]
-> Detailed IDEA Jet Benchmarks are available [on this link](https://portal.nersc.gov/cfs/m3246/gregork/fccjetbenchmarks/dashboard.html).
+> Latest results using IDEA are available [on this link](https://portal.nersc.gov/cfs/m3246/gregork/fccjetbenchmarks/dashboard.html).
 
 ## Overview
 
