@@ -115,6 +115,19 @@ and event-level metrics for each folder in `PATH_TO_HISTOGRAMS` (each clustering
 interactive dashboard, the presentation JER figures (including the fit-free `JER_points_only` grids) and the
 $m_H$ decomposition figures, so a single invocation regenerates everything.
 
+4. **Publish the dashboard** (optional). The dashboard is written to
+`$PATH_TO_HISTOGRAMS/plots/dashboard.html`; open it locally or sync it to any rsync-able
+web host:
+
+```bash
+PUBLISH_DEST=user@host:/var/www/project \
+PUBLISH_URL=https://host/project \
+PUBLISH_HTACCESS=1 \
+bash publish_plots.sh
+```
+
+See `publish_plots.sh` for the full set of options (`DRY_RUN`, `FORCE`, etc.).
+
 
 ## Dataset
 
@@ -275,7 +288,6 @@ FCCJetBenchmarks/
 
 ### Physics-related
 * The jet energy resolution fits don't work well, especially for the calo jets. It should be a good fit in the 2-jet case.
-* 
 ### Code-related
 * The slow and messy plotting code needs to be cleaned up.
 * The energy resolution determination (narrowest 68% interval) is somewhat slow as it's written in Python.
