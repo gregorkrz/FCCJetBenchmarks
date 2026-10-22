@@ -103,8 +103,6 @@ To see all the options of the histmaker command, simply run the command without 
 fccanalysis run src/histmaker.py
 ```
 
-Instead of running the histmaker, you can also use pre-computed histograms available at https://cernbox.cern.ch/s/QM81dj4GeMWP03Q.
-
 3. **Run the plotting scripts:**
 
 ```bash
