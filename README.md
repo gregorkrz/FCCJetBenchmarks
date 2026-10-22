@@ -163,25 +163,6 @@ Available within SLAC S3DF, or on request.
 | Histograms (`$PATH_TO_HISTOGRAMS`) | `/fs/ddn/sdf/group/atlas/d/gregork/fastsim/jetbenchmarks_histograms/IDEA_20260902_seeded_v2` |
 | Plots | `$PATH_TO_HISTOGRAMS/plots` (written by `scripts/create_plots.sh $PATH_TO_HISTOGRAMS`) |
 
-### Dataset generation
-
-`scripts/supervise_fastsim.py` submits per-process Fast Sim jobs, tops each process up to the
-event goal, and handles seeds, retries, and partition round-robin automatically:
-
-```bash
-setsid nohup python scripts/supervise_fastsim.py --dataset $PATH_TO_DATASET \
-    --goal 3000000 --max-queued 500 &            # log: <dataset>/supervisor.log
-```
-
-After the jobs finish, organize the files by process and sweep OOM-killed / unreadable files
-(the histmaker aborts on the first bad input):
-
-```bash
-python scripts/organize_dataset_per_process.py --base $PATH_TO_DATASET
-python scripts/find_corrupted_root_files.py $PATH_TO_DATASET --allow-partial \
-    --output $PATH_TO_DATASET/corrupted.txt
-```
-
 ### Input file format
 
 Each process is stored in its own folder, e.g., `p8_ee_ZH_6jet_ecm240`, and contains multiple ROOT files.
